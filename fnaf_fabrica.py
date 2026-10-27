@@ -6,25 +6,59 @@ import random
 import json
 import pygame
 
+from recursos import *      # rutas y carga de imágenes/sonidos
+from audio import *         # sonidos sintéticos y reales
+from guardado import *      # save_data.json
+from datos import *         # dificultad, diálogos, cámaras, rutas
+from efectos import aplicar_crt
+from historia import *      # textos de la historia: llamadas, cintas, finales
+from minijuegos import crear_minijuego, Relato
+
+# -------------------------------------------------------------
+# Reloj propio del juego: solo avanza mientras el juego no está en pausa,
+# y nunca salta más de 0.1 s por cuadro (al arrastrar la ventana o si el juego se traba).
+# -------------------------------------------------------------
+reloj_juego = 0.0
+pausado = False
+
+def tiempo_juego():
+    return reloj_juego
+
 # -------------------------------------------------------------
 # 0. Configuración de Directorios y Carga Segura de Assets
 # -------------------------------------------------------------
-def ruta_recurso(ruta_relativa):
-    """Obtiene la ruta absoluta para recursos (compatible con PyInstaller)."""
-    if hasattr(sys, '_MEIPASS'):
-        return os.path.join(sys._MEIPASS, ruta_relativa)
-    return os.path.join(os.path.abspath("."), ruta_relativa)
+# Modo desarrollador: se activa y desactiva escribiendo CODIGO_DESARROLLO en el teclado
+# (en cualquier pantalla; conviene hacerlo en el menú). Los atajos están en el panel que aparece.
+# Si ponés MODO_DESARROLLO = True, el juego arranca con el modo ya activado.
+MODO_DESARROLLO = False
+CODIGO_DESARROLLO = "dunmore"
 pygame.init()
 pygame.mixer.init(frequency=44100, size=-16, channels=2, buffer=512)
+pygame.mixer.set_num_channels(24)
+pygame.mixer.set_reserved(3)
+CANAL_AMBIENTE = pygame.mixer.Channel(0)   # Zumbido de fábrica en bucle durante la noche
+CANAL_MUSICA = pygame.mixer.Channel(1)     # Música del menú
+CANAL_VOZ = pygame.mixer.Channel(2)        # Voz de las llamadas
 
 ANCHO_VENTANA = 1200
 ALTO_VENTANA = 700
 ANCHO_OFICINA = 1800
 ALTO_OFICINA = 700
 
-pantalla = pygame.display.set_mode((ANCHO_VENTANA, ALTO_VENTANA))
+# Ajustes del jugador (ajustes.json) y ventana con escalado propio (ver ventana.py)
+AJUSTES = cargar_ajustes()
+import audio as modulo_audio
+modulo_audio.AJUSTES_AUDIO = AJUSTES
+import ventana
+pantalla = ventana.iniciar(ANCHO_VENTANA, ALTO_VENTANA, AJUSTES)
+
+def alternar_pantalla_completa():
+    AJUSTES["pantalla_completa"] = not AJUSTES["pantalla_completa"]
+    ventana.aplicar_modo()
+    guardar_ajustes(AJUSTES)
 pygame.display.set_caption("FNAF: Industrial Sector (1982)")
 reloj = pygame.time.Clock()
+ventana.reloj = reloj
 
 superficie_crt = pygame.Surface((ANCHO_VENTANA, ALTO_VENTANA))
 pantalla_camaras = pygame.Surface((ANCHO_VENTANA, ALTO_VENTANA))
@@ -57,185 +91,196 @@ fuente_8bit = cargar_fuente(14, True)
 # -------------------------------------------------------------
 # 2. Generador de Audio Procedural Sintético (WAV en memoria)
 # -------------------------------------------------------------
-def crear_sonido_procedural(duracion, frecuencia_base, tipo="seno", fade=True, mod=0.0):
-  tasa = 44100
-  n_muestras = int(tasa * duracion)
-  muestras = bytearray()
- 
-  for i in range(n_muestras):
-    t = i / tasa
-    frec = frecuencia_base + (math.sin(2.0 * math.pi * mod * t) * (frecuencia_base * 0.2) if mod > 0 else 0)
-   
-    if tipo == "seno":
-      val = math.sin(2.0 * math.pi * frec * t)
-    elif tipo == "cuadrada":
-      val = 1.0 if math.sin(2.0 * math.pi * frec * t) >= 0 else -1.0
-    elif tipo == "ruido":
-      val = random.uniform(-1.0, 1.0)
-    elif tipo == "sierra":
-      val = 2.0 * (t * frec - math.floor(0.5 + t * frec))
-    else:
-      val = 0.0
-
-    if fade:
-      factor_fade = 1.0 - (i / n_muestras)
-      val *= factor_fade
-
-    val_int = int(max(-32767, min(32767, val * 28000)))
-    b = val_int.to_bytes(2, byteorder='little', signed=True)
-    muestras.extend(b)
-    muestras.extend(b)
-
-  import io
-  import wave
-  buffer_io = io.BytesIO()
-  with wave.open(buffer_io, 'wb') as wf:
-    wf.setnchannels(2)
-    wf.setsampwidth(2)
-    wf.setframerate(tasa)
-    wf.writeframes(muestras)
-  buffer_io.seek(0)
-  return pygame.mixer.Sound(buffer_io)
-
-sfx_puerta = crear_sonido_procedural(0.35, 110, "cuadrada")
-sfx_linterna = crear_sonido_procedural(0.08, 1200, "cuadrada")
-sfx_persiana = crear_sonido_procedural(0.45, 95, "sierra")
-sfx_monitor_movimiento = crear_sonido_procedural(0.22, 280, "seno")
-sfx_estatica_cctv = crear_sonido_procedural(0.18, 0, "ruido", fade=False)
-sfx_alarma_error = crear_sonido_procedural(0.4, 880, "cuadrada", mod=8.0)
-sfx_reboot_click = crear_sonido_procedural(0.05, 1800, "seno")
-sfx_apagon_down = crear_sonido_procedural(1.2, 160, "sierra")
-sfx_jumpscare = crear_sonido_procedural(2.2, 180, "ruido", fade=False)
-sfx_bobina_cuerda = crear_sonido_procedural(0.12, 600, "sierra")
-sfx_lure_audio = crear_sonido_procedural(0.5, 440, "seno", mod=4.0)
-sfx_ir_hum = crear_sonido_procedural(0.35, 65, "seno", fade=False)
-sfx_ir_lock = crear_sonido_procedural(0.18, 1450, "cuadrada")
-sfx_paso_metal = crear_sonido_procedural(0.18, 140, "cuadrada")
-sfx_conducto_metal = crear_sonido_procedural(0.25, 90, "sierra")
-sfx_timbre = crear_sonido_procedural(0.4, 750, "seno", mod=12.0)
-sfx_campana_1 = crear_sonido_procedural(0.8, 523, "seno")
-sfx_campana_2 = crear_sonido_procedural(0.8, 659, "seno")
-sfx_campana_3 = crear_sonido_procedural(1.2, 784, "seno")
-sfx_paso_8bit = crear_sonido_procedural(0.06, 220, "cuadrada")
-sfx_glitch_8bit = crear_sonido_procedural(0.3, 0, "ruido")
+sfx_puerta = sonido("puerta", 0.35, 110, "cuadrada")
+sfx_linterna = sonido("linterna", 0.08, 1200, "cuadrada")
+sfx_persiana = sonido("persiana", 0.45, 95, "sierra")
+sfx_monitor_movimiento = sonido("monitor_movimiento", 0.22, 280, "seno")
+sfx_estatica_cctv = sonido("estatica_cctv", 0.18, 0, "ruido", fade=False)
+sfx_alarma_error = sonido("alarma_error", 0.4, 880, "cuadrada", mod=8.0)
+sfx_reboot_click = sonido("reboot_click", 0.05, 1800, "seno")
+sfx_apagon_down = sonido("apagon_down", 1.2, 160, "sierra")
+sfx_jumpscare = sonido("jumpscare", 2.2, 180, "ruido", fade=False)
+sfx_bobina_cuerda = sonido("bobina_cuerda", 0.12, 600, "sierra")
+sfx_lure_audio = sonido("lure_audio", 0.5, 440, "seno", mod=4.0)
+sfx_ir_hum = sonido("ir_hum", 0.35, 65, "seno", fade=False)
+sfx_ir_lock = sonido("ir_lock", 0.18, 1450, "cuadrada")
+sfx_paso_metal = sonido("paso_metal", 0.18, 140, "cuadrada")
+sfx_conducto_metal = sonido("conducto_metal", 0.25, 90, "sierra")
+sfx_timbre = sonido("timbre", 0.4, 750, "seno", mod=12.0)
+sfx_campana_1 = sonido("campana_1", 0.8, 523, "seno")
+sfx_campana_2 = sonido("campana_2", 0.8, 659, "seno")
+sfx_campana_3 = sonido("campana_3", 1.2, 784, "seno")
+sfx_paso_8bit = sonido("paso_8bit", 0.06, 220, "cuadrada")
+sfx_respiracion = sonido("respiracion", 0.9, 0, "ruido")          # Penny junto a la puerta
+sfx_golpe_techo = sonido("golpe_techo", 0.14, 70, "cuadrada")     # Silas en la rejilla
+sfx_golpe_vidrio = sonido("golpe_vidrio", 0.06, 1700, "seno")      # Rusty tocando el vidrio
+sfx_respiracion.set_volume(0.35)
+sfx_glitch_8bit = sonido("glitch_8bit", 0.3, 0, "ruido")
 
 NOTAS_CAJA_MUSICA = [
   crear_sonido_procedural(0.4, f, "seno") for f in [523, 587, 659, 698, 784, 880]
 ]
 
-def reproducir_sonido(sfx, vol_izq=1.0, vol_der=1.0):
-  canal = sfx.play()
-  if canal:
-    canal.set_volume(vol_izq, vol_der)
+# Gritos de jumpscare (uno por animatrónico) y ambiente
+GRITOS = {n: cargar_sonido_opcional(f"grito_{a}") for n, a in
+          [("Barnaby", "barnaby"), ("Silas", "silas"), ("Penny", "penny"), ("Rusty Bunny", "bunny")]}
+sfx_ambiente = sonido("ambiente", 3.0, 55, "seno", fade=False)
+if "ambiente" not in SONIDOS_REALES:
+    sfx_ambiente.set_volume(0.12)
+musica_menu = cargar_sonido_opcional("musica_menu")
+VOCES_LLAMADA = {n: cargar_sonido_opcional(f"llamada_noche_{n}") for n in range(1, 6)}
+print(f"[AUDIO] Archivos reales: {', '.join(SONIDOS_REALES) or 'ninguno'}"
+      f" | gritos: {sum(1 for g in GRITOS.values() if g)}/4"
+      f" | voces: {sum(1 for v in VOCES_LLAMADA.values() if v)}/5"
+      f" | música menú: {'sí' if musica_menu else 'no'}")
+
+def actualizar_audio_continuo():
+    """Arranca o corta el ambiente y la música según lo que esté pasando."""
+    g = AJUSTES["vol_general"] / 100.0
+    CANAL_AMBIENTE.set_volume(g * AJUSTES["vol_musica"] / 100.0)
+    CANAL_MUSICA.set_volume(g * AJUSTES["vol_musica"] / 100.0)
+    CANAL_VOZ.set_volume(g * AJUSTES["vol_voces"] / 100.0)
+    if estado_actual == ESTADO_AJUSTES:
+        return   # En ajustes se deja todo como estaba (música del menú o la noche en pausa)
+    en_noche = estado_actual == ESTADO_JUEGO and not juego_terminado and not en_jumpscare and not en_apagon
+    if en_noche and not CANAL_AMBIENTE.get_busy():
+        CANAL_AMBIENTE.play(sfx_ambiente, loops=-1)
+    elif not en_noche and CANAL_AMBIENTE.get_busy():
+        CANAL_AMBIENTE.fadeout(400)
+    en_menu = estado_actual in (ESTADO_MENU, ESTADO_CUSTOM, ESTADO_ARCHIVO)
+    if musica_menu and en_menu and not CANAL_MUSICA.get_busy():
+        CANAL_MUSICA.play(musica_menu, loops=-1, fade_ms=800)
+    elif not en_menu and CANAL_MUSICA.get_busy():
+        CANAL_MUSICA.fadeout(600)
+    if estado_actual != ESTADO_JUEGO and CANAL_VOZ.get_busy():
+        CANAL_VOZ.stop()
 
 # -------------------------------------------------------------
 # 3. Guardado y Carga de Progreso (save_data.json)
 # -------------------------------------------------------------
-def ruta_guardado():
-  return ruta_recurso("save_data.json")
-
-def guardar_partida(datos):
-  try:
-    with open(ruta_guardado(), "w", encoding="utf-8") as f:
-      json.dump(datos, f, indent=4)
-  except:
-    pass
-
-def cargar_partida():
-  try:
-    if os.path.exists(ruta_guardado()):
-      with open(ruta_guardado(), "r", encoding="utf-8") as f:
-        return json.load(f)
-  except:
-    pass
-  return {
-    "noche_desbloqueada": 1,
-    "juego_completado_5_noches": False,
-    "ia_custom": {"Barnaby": 10, "Silas": 10, "Penny": 10, "Rusty Bunny": 10},
-    "record_20_20_20_20": False
-  }
-
 datos_guardados = cargar_partida()
 noche_desbloqueada = datos_guardados.get("noche_desbloqueada", 1)
 juego_completado_5_noches = datos_guardados.get("juego_completado_5_noches", False)
 ia_custom = datos_guardados.get("ia_custom", {"Barnaby": 10, "Silas": 10, "Penny": 10, "Rusty Bunny": 10})
 record_20_20_20_20 = datos_guardados.get("record_20_20_20_20", False)
+evidencias = set(datos_guardados.get("evidencias", []))   # Pruebas encontradas en las cintas (1 a 4)
+
+def guardar_progreso():
+    guardar_partida({
+        "noche_desbloqueada": noche_desbloqueada,
+        "juego_completado_5_noches": juego_completado_5_noches,
+        "ia_custom": ia_custom,
+        "record_20_20_20_20": record_20_20_20_20,
+        "evidencias": sorted(evidencias),
+    })
 
 # -------------------------------------------------------------
 # 4. Carga Segura de Sprites y Texturas
 # -------------------------------------------------------------
 ASSETS = {}
 
-def cargar_imagen_opcional(nombre_archivo, subcarpeta="assets"):
-  p = ruta_recurso(os.path.join(subcarpeta, nombre_archivo))
-  if os.path.exists(p):
-    try:
-      return pygame.image.load(p).convert_alpha()
-    except:
-      return None
-  return None
+# Índice de todas las imágenes dentro de assets/ y sus subcarpetas
+# (camaras/, jumpscares/, oficina/, sprites/...). Se busca por nombre de archivo,
+# así podés reorganizar las carpetas sin tocar el código.
 
-ASSETS["oficina_base"] = cargar_imagen_opcional("oficina.png")
-ASSETS["techo_rejilla"] = cargar_imagen_opcional("techo.png")
-ASSETS["barnaby_oficina"] = cargar_imagen_opcional("barnaby_oficina.png")
-ASSETS["barnaby_cam"] = cargar_imagen_opcional("barnaby_cam.png")
-ASSETS["silas_techo"] = cargar_imagen_opcional("silas_techo.png")
-ASSETS["silas_vent"] = cargar_imagen_opcional("silas_vent.png")
-ASSETS["penny_puerta"] = cargar_imagen_opcional("penny_puerta.png")
-ASSETS["penny_cam"] = cargar_imagen_opcional("penny_cam.png")
-ASSETS["bunny_ventana"] = cargar_imagen_opcional("bunny_ventana.png")
-ASSETS["bunny_cam"] = cargar_imagen_opcional("bunny_cam.png")
-ASSETS["periodico"] = cargar_imagen_opcional("periodico.png")
+# Fondos: se escalan UNA sola vez al cargar (escalar 2400x1792 en cada cuadro es muy lento).
+# La oficina se escala a 1800 de ancho y se recorta en alto; ancla_y elige qué franja se ve.
+ANCLA_Y_OFICINA = 0.55
+ASSETS["oficina_base"] = escalar_cubriendo(cargar_imagen_opcional("oficina.png", "oficina_base.png", opaca=True), ANCHO_OFICINA, ALTO_OFICINA, ANCLA_Y_OFICINA)
+ASSETS["oficina_puerta_abierta"] = escalar_cubriendo(cargar_imagen_opcional("oficina_puerta_abierta.png", opaca=True), ANCHO_OFICINA, ALTO_OFICINA, ANCLA_Y_OFICINA)
+ASSETS["techo_rejilla"] = escalar_cubriendo(cargar_imagen_opcional("techo.png", "techo_rejilla.png", opaca=True), ANCHO_VENTANA, ALTO_VENTANA)
+ASSETS["periodico_verdadero"] = escalar_cubriendo(cargar_imagen_opcional("periodico_verdadero.png", opaca=True), ANCHO_VENTANA, ALTO_VENTANA)
+ASSETS["periodico"] = escalar_cubriendo(cargar_imagen_opcional("periodico.png", opaca=True), ANCHO_VENTANA, ALTO_VENTANA)
 
 for i in range(1, 9):
-  ASSETS[f"cam_0{i}"] = cargar_imagen_opcional(f"cam_0{i}.png")
-ASSETS["vent_tunel"] = cargar_imagen_opcional("vent_tunel.png")
-ASSETS["vent_bloqueada"] = cargar_imagen_opcional("vent_bloqueada.png")
+    ASSETS[f"cam_0{i}"] = escalar_cubriendo(cargar_imagen_opcional(f"cam_0{i}.png", opaca=True), 720, 480)
+ASSETS["vent_tunel"] = escalar_cubriendo(cargar_imagen_opcional("vent_tunel.png", opaca=True), 720, 480)
+# Opcional: una imagen distinta por ducto (vent_01.png ... vent_04.png). Si falta, se usa vent_tunel.png
+for i in range(1, 5):
+    ASSETS[f"vent_0{i}"] = escalar_cubriendo(cargar_imagen_opcional(f"vent_0{i}.png", opaca=True), 720, 480)
+ASSETS["vent_bloqueada"] = escalar_cubriendo(cargar_imagen_opcional("vent_bloqueada.png", opaca=True), 720, 480)
+
+# Jumpscares a pantalla completa (un poco más grandes para poder hacer zoom y temblor)
+for _nombre, _archivo in JUMPSCARE_ARCHIVOS.items():
+    ASSETS[f"jumpscare_{_nombre}"] = escalar_cubriendo(cargar_imagen_opcional(_archivo, opaca=True), int(ANCHO_VENTANA * 1.15), int(ALTO_VENTANA * 1.15))
+
+# Sprites con transparencia
+for _clave in ["barnaby_oficina", "barnaby_cam", "silas_techo", "silas_vent",
+               "penny_puerta", "penny_cam", "bunny_ventana", "bunny_cam"]:
+    ASSETS[_clave] = cargar_imagen_opcional(f"{_clave}.png")
+
+# Animaciones por cuadros: si existen <nombre>_00.png, <nombre>_01.png, ... se reproducen en bucle.
+# Sirve para cualquier sprite (barnaby_cam_00.png...) y para los jumpscares (jumpscare_penny_00.png...).
+ANIMS = {}
+
+def cargar_cuadros(clave, escalar=None):
+    cuadros = []
+    while True:
+        img = cargar_imagen_opcional(f"{clave}_{len(cuadros):02d}.png", opaca=escalar is not None)
+        if img is None:
+            break
+        cuadros.append(escalar(img) if escalar else img)
+    return cuadros
+
+for _clave in ["barnaby_oficina", "barnaby_cam", "silas_techo", "silas_vent",
+               "penny_puerta", "penny_cam", "bunny_ventana", "bunny_cam"]:
+    _cuadros = cargar_cuadros(_clave)
+    if _cuadros:
+        ANIMS[_clave] = _cuadros
+        ASSETS[_clave] = ASSETS.get(_clave) or _cuadros[0]
+for _nombre, _archivo in JUMPSCARE_ARCHIVOS.items():
+    _cuadros = cargar_cuadros(_archivo[:-4], lambda im: escalar_cubriendo(im, int(ANCHO_VENTANA * 1.15), int(ALTO_VENTANA * 1.15)))
+    if _cuadros:
+        ANIMS[f"jumpscare_{_nombre}"] = _cuadros
+        ASSETS[f"jumpscare_{_nombre}"] = ASSETS.get(f"jumpscare_{_nombre}") or _cuadros[0]
+if ANIMS:
+    print("[ASSETS] Animaciones: " + ", ".join(f"{k} ({len(v)} cuadros)" for k, v in ANIMS.items()))
+
+OPCIONALES = {"oficina_puerta_abierta", "periodico_verdadero", "cam_03", "vent_01", "vent_02", "vent_03", "vent_04"}
+
+def sprite(clave, fps=8):
+    """Cuadro actual de una animación, o la imagen fija si no tiene cuadros."""
+    cuadros = ANIMS.get(clave)
+    if cuadros:
+        return cuadros[int(tiempo_juego() * fps) % len(cuadros)]
+    return ASSETS.get(clave)
+
+_faltan = [k for k, v in ASSETS.items() if v is None and k not in OPCIONALES]
+print(f"[ASSETS] Cargados {len(ASSETS) - len(_faltan)}/{len(ASSETS)}. Faltan: {', '.join(_faltan) or 'ninguno'}")
 
 # -------------------------------------------------------------
 # 5. Efectos CRT y Post-Procesado
 # -------------------------------------------------------------
-crt_activo = True
+crt_activo = AJUSTES["crt"]
 
 def aplicar_postprocesado_crt(dt, intensidad_aberracion=1):
-  if not crt_activo:
-    return
-
-  ancho, alto = ANCHO_VENTANA, ALTO_VENTANA
-  if intensidad_aberracion > 0:
-    shift = intensidad_aberracion
-    superficie_crt.blit(pantalla, (0, 0))
-    capa_r = superficie_crt.copy()
-    capa_b = superficie_crt.copy()
-    pantalla.blit(capa_r, (shift, 0), special_flags=pygame.BLEND_RGB_ADD)
-    pantalla.blit(capa_b, (-shift, 0), special_flags=pygame.BLEND_RGB_ADD)
-
-  # Líneas de escaneo analógicas
-  for y in range(0, alto, 3):
-    pygame.draw.line(pantalla, (0, 0, 0, 45), (0, y), (ancho, y), 1)
-
-  # Viñeta oscura periférica
-  vignette = pygame.Surface((ancho, alto), pygame.SRCALPHA)
-  pygame.draw.rect(vignette, (0, 0, 0, 70), (0, 0, ancho, alto), 35)
-  pantalla.blit(vignette, (0, 0))
+    if crt_activo:
+        aplicar_crt(pantalla, intensidad_aberracion)
 
 # -------------------------------------------------------------
 # 6. Renderizado Auxiliar de Sprites
 # -------------------------------------------------------------
-def dibujar_sprite_centrado(superficie, img, cx, cy, escala=1.0, brillo=255):
-  if img:
-    w = int(img.get_width() * escala)
-    h = int(img.get_height() * escala)
-    escalada = pygame.transform.scale(img, (w, h))
-    if brillo < 255:
-      escalada.set_alpha(brillo)
-    superficie.blit(escalada, (cx - w // 2, cy - h // 2))
-  else:
-    radio = int(45 * escala)
-    color = (min(255, brillo), min(120, brillo // 2), 40)
-    pygame.draw.circle(superficie, color, (cx, cy), radio)
-    pygame.draw.circle(superficie, (255, 255, 255), (cx - 12, cy - 10), int(8 * escala))
-    pygame.draw.circle(superficie, (255, 255, 255), (cx + 12, cy - 10), int(8 * escala))
+def dibujar_sprite_centrado(superficie, img, cx, cy, escala=1.0, brillo=255, vivo=False):
+    """vivo=True: leve "respiración" y tirones de señal ocasionales (para cámaras)."""
+    if img and vivo:
+        t = tiempo_juego()
+        escala *= 1.0 + 0.012 * math.sin(t * 2.3 + cx * 0.05)
+        if random.random() < 0.035:
+            cx += random.randint(-7, 7)
+            cy += random.randint(-3, 3)
+    if img:
+        w = int(img.get_width() * escala)
+        h = int(img.get_height() * escala)
+        escalada = pygame.transform.scale(img, (w, h))
+        if brillo < 255:
+            escalada.set_alpha(brillo)
+        superficie.blit(escalada, (cx - w // 2, cy - h // 2))
+    else:
+        radio = int(45 * escala)
+        color = (min(255, brillo), min(120, brillo // 2), 40)
+        pygame.draw.circle(superficie, color, (cx, cy), radio)
+        pygame.draw.circle(superficie, (255, 255, 255), (cx - 12, cy - 10), int(8 * escala))
+        pygame.draw.circle(superficie, (255, 255, 255), (cx + 12, cy - 10), int(8 * escala))
 
 # -------------------------------------------------------------
 # 7. Variables de Timers y Sonidos Continuos
@@ -248,245 +293,245 @@ tiempo_ultimo_hum_amb = 0.0
 # 8. Componentes Visuales Detallados y Texturas Industriales
 # -------------------------------------------------------------
 def dibujar_boton_industrial(superficie, x, y, ancho, alto, activo, color_luz, etiqueta=""):
-  sombra = pygame.Surface((ancho + 8, alto + 8), pygame.SRCALPHA)
-  pygame.draw.rect(sombra, (0, 0, 0, 150), (0, 0, ancho + 8, alto + 8), border_radius=5)
-  superficie.blit(sombra, (x - 2, y - 2))
+    sombra = pygame.Surface((ancho + 8, alto + 8), pygame.SRCALPHA)
+    pygame.draw.rect(sombra, (0, 0, 0, 150), (0, 0, ancho + 8, alto + 8), border_radius=5)
+    superficie.blit(sombra, (x - 2, y - 2))
 
-  rect_caja = pygame.Rect(x, y, ancho, alto)
-  pygame.draw.rect(superficie, (26, 29, 32), rect_caja, border_radius=4)
-  pygame.draw.rect(superficie, (48, 52, 56), (x + 2, y + 2, ancho - 4, alto - 4), border_radius=3)
-  pygame.draw.rect(superficie, (18, 20, 22), rect_caja, 2, border_radius=4)
+    rect_caja = pygame.Rect(x, y, ancho, alto)
+    pygame.draw.rect(superficie, (26, 29, 32), rect_caja, border_radius=4)
+    pygame.draw.rect(superficie, (48, 52, 56), (x + 2, y + 2, ancho - 4, alto - 4), border_radius=3)
+    pygame.draw.rect(superficie, (18, 20, 22), rect_caja, 2, border_radius=4)
 
-  for cx, cy in [(x + 4, y + 4), (x + ancho - 5, y + 4), (x + 4, y + alto - 5), (x + ancho - 5, y + alto - 5)]:
-    pygame.draw.circle(superficie, (50, 42, 35), (cx, cy), 2)
-    pygame.draw.circle(superficie, (12, 14, 15), (cx, cy), 1)
+    for cx, cy in [(x + 4, y + 4), (x + ancho - 5, y + 4), (x + 4, y + alto - 5), (x + ancho - 5, y + alto - 5)]:
+        pygame.draw.circle(superficie, (50, 42, 35), (cx, cy), 2)
+        pygame.draw.circle(superficie, (12, 14, 15), (cx, cy), 1)
 
-  r_btn = pygame.Rect(x + 7, y + 7, ancho - 14, alto - 14)
-  if activo:
-    pygame.draw.rect(superficie, (15, 17, 20), r_btn, border_radius=3)
-    pygame.draw.rect(superficie, color_luz, (r_btn.x + 2, r_btn.y + 2, r_btn.width - 4, r_btn.height - 4), border_radius=2)
-    glow = pygame.Surface((ancho + 16, alto + 16), pygame.SRCALPHA)
-    pygame.draw.circle(glow, (*color_luz, 50), (ancho // 2 + 8, alto // 2 + 8), ancho // 2 + 6)
-    superficie.blit(glow, (x - 8, y - 8))
-  else:
-    pygame.draw.rect(superficie, (14, 16, 18), r_btn, border_radius=3)
-    dim_color = (max(8, color_luz[0] // 6), max(8, color_luz[1] // 6), max(8, color_luz[2] // 6))
-    pygame.draw.rect(superficie, dim_color, (r_btn.x + 2, r_btn.y + 2, r_btn.width - 4, r_btn.height - 4), border_radius=2)
-    pygame.draw.line(superficie, (75, 80, 85), (r_btn.left + 2, r_btn.top + 2), (r_btn.right - 4, r_btn.top + 2), 1)
+    r_btn = pygame.Rect(x + 7, y + 7, ancho - 14, alto - 14)
+    if activo:
+        pygame.draw.rect(superficie, (15, 17, 20), r_btn, border_radius=3)
+        pygame.draw.rect(superficie, color_luz, (r_btn.x + 2, r_btn.y + 2, r_btn.width - 4, r_btn.height - 4), border_radius=2)
+        glow = pygame.Surface((ancho + 16, alto + 16), pygame.SRCALPHA)
+        pygame.draw.circle(glow, (*color_luz, 50), (ancho // 2 + 8, alto // 2 + 8), ancho // 2 + 6)
+        superficie.blit(glow, (x - 8, y - 8))
+    else:
+        pygame.draw.rect(superficie, (14, 16, 18), r_btn, border_radius=3)
+        dim_color = (max(8, color_luz[0] // 6), max(8, color_luz[1] // 6), max(8, color_luz[2] // 6))
+        pygame.draw.rect(superficie, dim_color, (r_btn.x + 2, r_btn.y + 2, r_btn.width - 4, r_btn.height - 4), border_radius=2)
+        pygame.draw.line(superficie, (75, 80, 85), (r_btn.left + 2, r_btn.top + 2), (r_btn.right - 4, r_btn.top + 2), 1)
 
-  if etiqueta:
-    txt = fuente_cam.render(etiqueta, True, (160, 175, 180))
-    superficie.blit(txt, (x + ancho // 2 - txt.get_width() // 2, y + alto + 4))
+    if etiqueta:
+        txt = fuente_cam.render(etiqueta, True, (160, 175, 180))
+        superficie.blit(txt, (x + ancho // 2 - txt.get_width() // 2, y + alto + 4))
 
 def dibujar_puerta_blindada(superficie, rect):
-  sombra = pygame.Surface((rect.width + 20, rect.height + 20), pygame.SRCALPHA)
-  pygame.draw.rect(sombra, (0, 0, 0, 215), (0, 0, rect.width + 20, rect.height + 20), border_radius=6)
-  superficie.blit(sombra, (rect.x - 10, rect.y - 10))
+    sombra = pygame.Surface((rect.width + 20, rect.height + 20), pygame.SRCALPHA)
+    pygame.draw.rect(sombra, (0, 0, 0, 215), (0, 0, rect.width + 20, rect.height + 20), border_radius=6)
+    superficie.blit(sombra, (rect.x - 10, rect.y - 10))
 
-  pygame.draw.rect(superficie, (26, 28, 30), rect)
-  pygame.draw.rect(superficie, (45, 48, 52), (rect.x + 4, rect.y + 4, rect.width - 8, rect.height - 8))
-  pygame.draw.rect(superficie, (14, 15, 17), rect, 3)
+    pygame.draw.rect(superficie, (26, 28, 30), rect)
+    pygame.draw.rect(superficie, (45, 48, 52), (rect.x + 4, rect.y + 4, rect.width - 8, rect.height - 8))
+    pygame.draw.rect(superficie, (14, 15, 17), rect, 3)
 
-  for y_div in range(rect.top + 40, rect.bottom - 60, 75):
-    pygame.draw.rect(superficie, (32, 35, 38), (rect.left + 8, y_div, rect.width - 16, 26))
-    pygame.draw.line(superficie, (65, 70, 76), (rect.left + 8, y_div), (rect.right - 8, y_div), 1)
-    pygame.draw.line(superficie, (12, 13, 15), (rect.left + 8, y_div + 26), (rect.right - 8, y_div + 26), 2)
-   
-    for rx in [rect.left + 18, rect.left + 48, rect.right - 50, rect.right - 20]:
-      pygame.draw.circle(superficie, (60, 65, 70), (rx, y_div + 13), 4)
-      pygame.draw.circle(superficie, (15, 17, 18), (rx, y_div + 13), 2)
+    for y_div in range(rect.top + 40, rect.bottom - 60, 75):
+        pygame.draw.rect(superficie, (32, 35, 38), (rect.left + 8, y_div, rect.width - 16, 26))
+        pygame.draw.line(superficie, (65, 70, 76), (rect.left + 8, y_div), (rect.right - 8, y_div), 1)
+        pygame.draw.line(superficie, (12, 13, 15), (rect.left + 8, y_div + 26), (rect.right - 8, y_div + 26), 2)
 
-  alto_franja = 48
-  y_franja = rect.bottom - alto_franja - 8
-  r_franja = pygame.Rect(rect.left + 8, y_franja, rect.width - 16, alto_franja)
-  pygame.draw.rect(superficie, (170, 135, 25), r_franja)
-  for fx in range(r_franja.left - 40, r_franja.right + 40, 28):
-    pts = [
-      (fx, r_franja.bottom),
-      (fx + 14, r_franja.bottom),
-      (fx + 28, r_franja.top),
-      (fx + 14, r_franja.top)
-    ]
-    pygame.draw.polygon(superficie, (24, 25, 26), pts)
-  pygame.draw.rect(superficie, (14, 15, 16), r_franja, 2)
+        for rx in [rect.left + 18, rect.left + 48, rect.right - 50, rect.right - 20]:
+            pygame.draw.circle(superficie, (60, 65, 70), (rx, y_div + 13), 4)
+            pygame.draw.circle(superficie, (15, 17, 18), (rx, y_div + 13), 2)
 
-  r_tag = pygame.Rect(rect.centerx - 110, rect.top + 160, 220, 36)
-  pygame.draw.rect(superficie, (16, 17, 19), r_tag, border_radius=3)
-  col_alerta = (200, 50, 50) if int(time.time() * 3) % 2 == 0 else (110, 25, 25)
-  pygame.draw.rect(superficie, col_alerta, r_tag, 2, border_radius=3)
-  txt_lock = fuente_pequeña.render("SECTOR 01 // COMPUERTA SELLADA", True, (230, 200, 200))
-  superficie.blit(txt_lock, (r_tag.centerx - txt_lock.get_width() // 2, r_tag.centery - txt_lock.get_height() // 2))
+    alto_franja = 48
+    y_franja = rect.bottom - alto_franja - 8
+    r_franja = pygame.Rect(rect.left + 8, y_franja, rect.width - 16, alto_franja)
+    pygame.draw.rect(superficie, (170, 135, 25), r_franja)
+    for fx in range(r_franja.left - 40, r_franja.right + 40, 28):
+        pts = [
+          (fx, r_franja.bottom),
+          (fx + 14, r_franja.bottom),
+          (fx + 28, r_franja.top),
+          (fx + 14, r_franja.top)
+        ]
+        pygame.draw.polygon(superficie, (24, 25, 26), pts)
+    pygame.draw.rect(superficie, (14, 15, 16), r_franja, 2)
+
+    r_tag = pygame.Rect(rect.centerx - 110, rect.top + 160, 220, 36)
+    pygame.draw.rect(superficie, (16, 17, 19), r_tag, border_radius=3)
+    col_alerta = (200, 50, 50) if int(tiempo_juego() * 3) % 2 == 0 else (110, 25, 25)
+    pygame.draw.rect(superficie, col_alerta, r_tag, 2, border_radius=3)
+    txt_lock = fuente_pequeña.render("SECTOR 01 // COMPUERTA SELLADA", True, (230, 200, 200))
+    superficie.blit(txt_lock, (r_tag.centerx - txt_lock.get_width() // 2, r_tag.centery - txt_lock.get_height() // 2))
 
 def dibujar_ventilacion_techo_cerrada(superficie, rect):
-  sombra_t = pygame.Surface((rect.width + 40, rect.height + 40), pygame.SRCALPHA)
-  pygame.draw.rect(sombra_t, (0, 0, 0, 220), (0, 0, rect.width + 40, rect.height + 40), border_radius=12)
-  superficie.blit(sombra_t, (rect.x - 20, rect.y - 20))
+    sombra_t = pygame.Surface((rect.width + 40, rect.height + 40), pygame.SRCALPHA)
+    pygame.draw.rect(sombra_t, (0, 0, 0, 220), (0, 0, rect.width + 40, rect.height + 40), border_radius=12)
+    superficie.blit(sombra_t, (rect.x - 20, rect.y - 20))
 
-  pygame.draw.rect(superficie, (24, 27, 30), rect, border_radius=8)
-  pygame.draw.rect(superficie, (42, 47, 52), (rect.x + 8, rect.y + 8, rect.width - 16, rect.height - 16), border_radius=6)
-  pygame.draw.rect(superficie, (12, 14, 15), rect, 5, border_radius=8)
+    pygame.draw.rect(superficie, (24, 27, 30), rect, border_radius=8)
+    pygame.draw.rect(superficie, (42, 47, 52), (rect.x + 8, rect.y + 8, rect.width - 16, rect.height - 16), border_radius=6)
+    pygame.draw.rect(superficie, (12, 14, 15), rect, 5, border_radius=8)
 
-  for y_lama in range(rect.top + 24, rect.bottom - 30, 28):
-    r_lama = pygame.Rect(rect.left + 20, y_lama, rect.width - 40, 20)
-    pygame.draw.rect(superficie, (34, 38, 42), r_lama)
-    pygame.draw.line(superficie, (68, 75, 82), (r_lama.left, r_lama.top), (r_lama.right, r_lama.top), 2)
-    pygame.draw.line(superficie, (12, 14, 15), (r_lama.left, r_lama.bottom), (r_lama.right, r_lama.bottom), 2)
-    pygame.draw.circle(superficie, (75, 80, 85), (r_lama.left + 10, r_lama.centery), 3)
-    pygame.draw.circle(superficie, (12, 14, 16), (r_lama.left + 10, r_lama.centery), 1)
-    pygame.draw.circle(superficie, (75, 80, 85), (r_lama.right - 10, r_lama.centery), 3)
-    pygame.draw.circle(superficie, (12, 14, 16), (r_lama.right - 10, r_lama.centery), 1)
+    for y_lama in range(rect.top + 24, rect.bottom - 30, 28):
+        r_lama = pygame.Rect(rect.left + 20, y_lama, rect.width - 40, 20)
+        pygame.draw.rect(superficie, (34, 38, 42), r_lama)
+        pygame.draw.line(superficie, (68, 75, 82), (r_lama.left, r_lama.top), (r_lama.right, r_lama.top), 2)
+        pygame.draw.line(superficie, (12, 14, 15), (r_lama.left, r_lama.bottom), (r_lama.right, r_lama.bottom), 2)
+        pygame.draw.circle(superficie, (75, 80, 85), (r_lama.left + 10, r_lama.centery), 3)
+        pygame.draw.circle(superficie, (12, 14, 16), (r_lama.left + 10, r_lama.centery), 1)
+        pygame.draw.circle(superficie, (75, 80, 85), (r_lama.right - 10, r_lama.centery), 3)
+        pygame.draw.circle(superficie, (12, 14, 16), (r_lama.right - 10, r_lama.centery), 1)
 
-  for step_x in range(rect.left + 30, rect.right - 15, 45):
-    pygame.draw.circle(superficie, (70, 75, 80), (step_x, rect.top + 14), 3)
-    pygame.draw.circle(superficie, (12, 14, 15), (step_x, rect.top + 14), 1)
-    pygame.draw.circle(superficie, (70, 75, 80), (step_x, rect.bottom - 14), 3)
-    pygame.draw.circle(superficie, (12, 14, 15), (step_x, rect.bottom - 14), 1)
+    for step_x in range(rect.left + 30, rect.right - 15, 45):
+        pygame.draw.circle(superficie, (70, 75, 80), (step_x, rect.top + 14), 3)
+        pygame.draw.circle(superficie, (12, 14, 15), (step_x, rect.top + 14), 1)
+        pygame.draw.circle(superficie, (70, 75, 80), (step_x, rect.bottom - 14), 3)
+        pygame.draw.circle(superficie, (12, 14, 15), (step_x, rect.bottom - 14), 1)
 
-  caja_centro = pygame.Rect(rect.centerx - 140, rect.centery - 35, 280, 70)
-  pygame.draw.rect(superficie, (16, 18, 20), caja_centro, border_radius=5)
-  col_alerta_techo = (235, 50, 50) if int(time.time() * 4) % 2 == 0 else (90, 18, 18)
-  pygame.draw.rect(superficie, col_alerta_techo, caja_centro, 2, border_radius=5)
+    caja_centro = pygame.Rect(rect.centerx - 140, rect.centery - 35, 280, 70)
+    pygame.draw.rect(superficie, (16, 18, 20), caja_centro, border_radius=5)
+    col_alerta_techo = (235, 50, 50) if int(tiempo_juego() * 4) % 2 == 0 else (90, 18, 18)
+    pygame.draw.rect(superficie, col_alerta_techo, caja_centro, 2, border_radius=5)
 
-  pygame.draw.circle(superficie, col_alerta_techo, (caja_centro.left + 28, caja_centro.centery), 12)
-  pygame.draw.circle(superficie, (255, 220, 220), (caja_centro.left + 28, caja_centro.centery), 4)
+    pygame.draw.circle(superficie, col_alerta_techo, (caja_centro.left + 28, caja_centro.centery), 12)
+    pygame.draw.circle(superficie, (255, 220, 220), (caja_centro.left + 28, caja_centro.centery), 4)
 
-  txt_s1 = fuente_pequeña.render("SELLADO NEUMÁTICO ACTIVO", True, (255, 140, 140))
-  txt_s2 = fuente_cam.render("DRENAJE DE OXÍGENO EN CURSO", True, (200, 210, 220))
-  superficie.blit(txt_s1, (caja_centro.left + 50, caja_centro.top + 15))
-  superficie.blit(txt_s2, (caja_centro.left + 50, caja_centro.top + 38))
+    txt_s1 = fuente_pequeña.render("SELLADO NEUMÁTICO ACTIVO", True, (255, 140, 140))
+    txt_s2 = fuente_cam.render("DRENAJE DE OXÍGENO EN CURSO", True, (200, 210, 220))
+    superficie.blit(txt_s1, (caja_centro.left + 50, caja_centro.top + 15))
+    superficie.blit(txt_s2, (caja_centro.left + 50, caja_centro.top + 38))
 
 def dibujar_persiana_metalica_industrial(superficie, rect, progreso=1.0):
-  if progreso <= 0.0:
-    return
- 
-  alto_visible = int(rect.height * max(0.0, min(1.0, progreso)))
-  rect_visible = pygame.Rect(rect.x, rect.y, rect.width, alto_visible)
+    if progreso <= 0.0:
+        return
 
-  sombra_marco = pygame.Surface((rect_visible.width, rect_visible.height), pygame.SRCALPHA)
-  pygame.draw.rect(sombra_marco, (0, 0, 0, 215), (0, 0, rect_visible.width, rect_visible.height))
-  superficie.blit(sombra_marco, (rect_visible.x, rect_visible.y))
+    alto_visible = int(rect.height * max(0.0, min(1.0, progreso)))
+    rect_visible = pygame.Rect(rect.x, rect.y, rect.width, alto_visible)
 
-  pygame.draw.rect(superficie, (32, 35, 38), rect_visible)
+    sombra_marco = pygame.Surface((rect_visible.width, rect_visible.height), pygame.SRCALPHA)
+    pygame.draw.rect(sombra_marco, (0, 0, 0, 215), (0, 0, rect_visible.width, rect_visible.height))
+    superficie.blit(sombra_marco, (rect_visible.x, rect_visible.y))
 
-  ancho_guia = 18
-  pygame.draw.rect(superficie, (20, 22, 24), (rect.left, rect.top, ancho_guia, alto_visible))
-  pygame.draw.rect(superficie, (20, 22, 24), (rect.right - ancho_guia, rect.top, ancho_guia, alto_visible))
-  pygame.draw.rect(superficie, (10, 12, 14), (rect.left, rect.top, ancho_guia, alto_visible), 2)
-  pygame.draw.rect(superficie, (10, 12, 14), (rect.right - ancho_guia, rect.top, ancho_guia, alto_visible), 2)
+    pygame.draw.rect(superficie, (32, 35, 38), rect_visible)
 
-  paso_lama = 20
-  for y_lama in range(rect.top + 2, rect_visible.bottom - 12, paso_lama):
-    r_lama = pygame.Rect(rect.left + ancho_guia, y_lama, rect.width - (ancho_guia * 2), paso_lama - 2)
-    pygame.draw.rect(superficie, (46, 50, 54), r_lama)
-    pygame.draw.line(superficie, (74, 80, 86), (r_lama.left, r_lama.top), (r_lama.right, r_lama.top), 1)
-    pygame.draw.line(superficie, (14, 16, 18), (r_lama.left, r_lama.bottom), (r_lama.right, r_lama.bottom), 2)
+    ancho_guia = 18
+    pygame.draw.rect(superficie, (20, 22, 24), (rect.left, rect.top, ancho_guia, alto_visible))
+    pygame.draw.rect(superficie, (20, 22, 24), (rect.right - ancho_guia, rect.top, ancho_guia, alto_visible))
+    pygame.draw.rect(superficie, (10, 12, 14), (rect.left, rect.top, ancho_guia, alto_visible), 2)
+    pygame.draw.rect(superficie, (10, 12, 14), (rect.right - ancho_guia, rect.top, ancho_guia, alto_visible), 2)
 
-    if (y_lama // paso_lama) % 4 == 0:
-      pygame.draw.line(superficie, (65, 45, 30), (r_lama.left + 40, r_lama.top + 4), (r_lama.left + 95, r_lama.top + 4), 2)
-    elif (y_lama // paso_lama) % 7 == 0:
-      pygame.draw.line(superficie, (70, 42, 25), (r_lama.right - 120, r_lama.top + 5), (r_lama.right - 50, r_lama.top + 5), 2)
+    paso_lama = 20
+    for y_lama in range(rect.top + 2, rect_visible.bottom - 12, paso_lama):
+        r_lama = pygame.Rect(rect.left + ancho_guia, y_lama, rect.width - (ancho_guia * 2), paso_lama - 2)
+        pygame.draw.rect(superficie, (46, 50, 54), r_lama)
+        pygame.draw.line(superficie, (74, 80, 86), (r_lama.left, r_lama.top), (r_lama.right, r_lama.top), 1)
+        pygame.draw.line(superficie, (14, 16, 18), (r_lama.left, r_lama.bottom), (r_lama.right, r_lama.bottom), 2)
 
-  if alto_visible >= 32:
-    viga_inf = pygame.Rect(rect.left + ancho_guia - 4, rect_visible.bottom - 32, rect.width - (ancho_guia * 2) + 8, 30)
-    pygame.draw.rect(superficie, (24, 26, 28), viga_inf)
-    pygame.draw.rect(superficie, (10, 12, 14), viga_inf, 2)
-    pygame.draw.rect(superficie, (48, 52, 56), (viga_inf.centerx - 35, viga_inf.top + 8, 70, 14), border_radius=3)
-    pygame.draw.rect(superficie, (14, 16, 18), (viga_inf.centerx - 30, viga_inf.top + 10, 60, 10), border_radius=2)
+        if (y_lama // paso_lama) % 4 == 0:
+            pygame.draw.line(superficie, (65, 45, 30), (r_lama.left + 40, r_lama.top + 4), (r_lama.left + 95, r_lama.top + 4), 2)
+        elif (y_lama // paso_lama) % 7 == 0:
+            pygame.draw.line(superficie, (70, 42, 25), (r_lama.right - 120, r_lama.top + 5), (r_lama.right - 50, r_lama.top + 5), 2)
 
-  if progreso >= 0.85:
-    txt_stencil = fuente_pequeña.render("[PERSIANA CERRADA // RESISTENCIA MECÁNICA]", True, (180, 150, 60))
-    superficie.blit(txt_stencil, (rect.centerx - txt_stencil.get_width() // 2, rect.top + rect.height // 2 - 10))
+    if alto_visible >= 32:
+        viga_inf = pygame.Rect(rect.left + ancho_guia - 4, rect_visible.bottom - 32, rect.width - (ancho_guia * 2) + 8, 30)
+        pygame.draw.rect(superficie, (24, 26, 28), viga_inf)
+        pygame.draw.rect(superficie, (10, 12, 14), viga_inf, 2)
+        pygame.draw.rect(superficie, (48, 52, 56), (viga_inf.centerx - 35, viga_inf.top + 8, 70, 14), border_radius=3)
+        pygame.draw.rect(superficie, (14, 16, 18), (viga_inf.centerx - 30, viga_inf.top + 10, 60, 10), border_radius=2)
+
+    if progreso >= 0.85:
+        txt_stencil = fuente_pequeña.render("[PERSIANA CERRADA // RESISTENCIA MECÁNICA]", True, (180, 150, 60))
+        superficie.blit(txt_stencil, (rect.centerx - txt_stencil.get_width() // 2, rect.top + rect.height // 2 - 10))
 
 def dibujar_compuerta_ducto_remota(superficie, rect):
-  sombra = pygame.Surface((rect.width + 16, rect.height + 16), pygame.SRCALPHA)
-  pygame.draw.rect(sombra, (0, 0, 0, 195), (0, 0, rect.width + 16, rect.height + 16), border_radius=6)
-  superficie.blit(sombra, (rect.x - 8, rect.y - 8))
+    sombra = pygame.Surface((rect.width + 16, rect.height + 16), pygame.SRCALPHA)
+    pygame.draw.rect(sombra, (0, 0, 0, 195), (0, 0, rect.width + 16, rect.height + 16), border_radius=6)
+    superficie.blit(sombra, (rect.x - 8, rect.y - 8))
 
-  pygame.draw.rect(superficie, (26, 29, 32), rect, border_radius=3)
-  pygame.draw.rect(superficie, (12, 14, 16), rect, 3, border_radius=3)
+    pygame.draw.rect(superficie, (26, 29, 32), rect, border_radius=3)
+    pygame.draw.rect(superficie, (12, 14, 16), rect, 3, border_radius=3)
 
-  paso = 22
-  for y in range(rect.top + 8, rect.bottom - 35, paso):
-    r_l = pygame.Rect(rect.left + 14, y, rect.width - 28, paso - 3)
-    pygame.draw.rect(superficie, (40, 44, 48), r_l)
-    pygame.draw.line(superficie, (68, 74, 80), (r_l.left, r_l.top), (r_l.right, r_l.top), 1)
-    pygame.draw.line(superficie, (14, 16, 18), (r_l.left, r_l.bottom), (r_l.right, r_l.bottom), 2)
+    paso = 22
+    for y in range(rect.top + 8, rect.bottom - 35, paso):
+        r_l = pygame.Rect(rect.left + 14, y, rect.width - 28, paso - 3)
+        pygame.draw.rect(superficie, (40, 44, 48), r_l)
+        pygame.draw.line(superficie, (68, 74, 80), (r_l.left, r_l.top), (r_l.right, r_l.top), 1)
+        pygame.draw.line(superficie, (14, 16, 18), (r_l.left, r_l.bottom), (r_l.right, r_l.bottom), 2)
 
-  r_hz = pygame.Rect(rect.left + 14, rect.bottom - 30, rect.width - 28, 22)
-  pygame.draw.rect(superficie, (175, 140, 25), r_hz)
-  for hx in range(r_hz.left - 20, r_hz.right + 20, 22):
-    pts = [
-      (hx, r_hz.bottom),
-      (hx + 10, r_hz.bottom),
-      (hx + 18, r_hz.top),
-      (hx + 8, r_hz.top)
-    ]
-    pygame.draw.polygon(superficie, (22, 23, 25), pts)
-  pygame.draw.rect(superficie, (14, 15, 16), r_hz, 2)
+    r_hz = pygame.Rect(rect.left + 14, rect.bottom - 30, rect.width - 28, 22)
+    pygame.draw.rect(superficie, (175, 140, 25), r_hz)
+    for hx in range(r_hz.left - 20, r_hz.right + 20, 22):
+        pts = [
+          (hx, r_hz.bottom),
+          (hx + 10, r_hz.bottom),
+          (hx + 18, r_hz.top),
+          (hx + 8, r_hz.top)
+        ]
+        pygame.draw.polygon(superficie, (22, 23, 25), pts)
+    pygame.draw.rect(superficie, (14, 15, 16), r_hz, 2)
 
-  caja_aviso = pygame.Rect(rect.centerx - 120, rect.centery - 22, 240, 44)
-  pygame.draw.rect(superficie, (14, 16, 18), caja_aviso, border_radius=3)
-  col_borde = (220, 50, 50) if int(time.time() * 3) % 2 == 0 else (100, 20, 20)
-  pygame.draw.rect(superforde := col_borde, caja_aviso, 2, border_radius=3)
-  txt_1 = fuente_cam.render("COMPUERTA CERRADA REMOTAMENTE", True, (255, 110, 110))
-  txt_2 = fuente_cam.render("[FLUIDO BLOQUEADO]", True, (200, 210, 220))
-  superficie.blit(txt_1, (caja_aviso.centerx - txt_1.get_width() // 2, caja_aviso.top + 7))
-  superficie.blit(txt_2, (caja_aviso.centerx - txt_2.get_width() // 2, caja_aviso.top + 23))
+    caja_aviso = pygame.Rect(rect.centerx - 120, rect.centery - 22, 240, 44)
+    pygame.draw.rect(superficie, (14, 16, 18), caja_aviso, border_radius=3)
+    col_borde = (220, 50, 50) if int(tiempo_juego() * 3) % 2 == 0 else (100, 20, 20)
+    pygame.draw.rect(superficie, col_borde, caja_aviso, 2, border_radius=3)
+    txt_1 = fuente_cam.render("COMPUERTA CERRADA REMOTAMENTE", True, (255, 110, 110))
+    txt_2 = fuente_cam.render("[FLUIDO BLOQUEADO]", True, (200, 210, 220))
+    superficie.blit(txt_1, (caja_aviso.centerx - txt_1.get_width() // 2, caja_aviso.top + 7))
+    superficie.blit(txt_2, (caja_aviso.centerx - txt_2.get_width() // 2, caja_aviso.top + 23))
 
 def dibujar_plano_minimapa(superficie, rect_mapa, es_ventilacion):
-  for gx in range(rect_mapa.left + 15, rect_mapa.right, 25):
-    pygame.draw.line(superficie, (16, 24, 20), (gx, rect_mapa.top + 4), (gx, rect_mapa.bottom - 4), 1)
-  for gy in range(rect_mapa.top + 15, rect_mapa.bottom, 25):
-    pygame.draw.line(superficie, (16, 24, 20), (rect_mapa.left + 4, gy), (rect_mapa.right - 4, gy), 1)
+    for gx in range(rect_mapa.left + 15, rect_mapa.right, 25):
+        pygame.draw.line(superficie, (16, 24, 20), (gx, rect_mapa.top + 4), (gx, rect_mapa.bottom - 4), 1)
+    for gy in range(rect_mapa.top + 15, rect_mapa.bottom, 25):
+        pygame.draw.line(superficie, (16, 24, 20), (rect_mapa.left + 4, gy), (rect_mapa.right - 4, gy), 1)
 
-  rect_oficina = pygame.Rect(940, 622, 80, 32)
-  pygame.draw.rect(superficie, (20, 35, 28), rect_oficina)
-  pygame.draw.rect(superficie, (80, 160, 120), rect_oficina, 2)
-  txt_you = fuente_cam.render("OFICINA [TÚ]", True, (130, 240, 180))
-  superficie.blit(txt_you, (rect_oficina.centerx - txt_you.get_width() // 2, rect_oficina.centery - 5))
+    rect_oficina = pygame.Rect(940, 622, 80, 32)
+    pygame.draw.rect(superficie, (20, 35, 28), rect_oficina)
+    pygame.draw.rect(superficie, (80, 160, 120), rect_oficina, 2)
+    txt_you = fuente_cam.render("OFICINA [TÚ]", True, (130, 240, 180))
+    superficie.blit(txt_you, (rect_oficina.centerx - txt_you.get_width() // 2, rect_oficina.centery - 5))
 
-  if not es_ventilacion:
-    color_sala = (18, 28, 24)
-    color_muro = (45, 85, 68)
-    color_pasillo = (35, 65, 52)
+    if not es_ventilacion:
+        color_sala = (18, 28, 24)
+        color_muro = (45, 85, 68)
+        color_pasillo = (35, 65, 52)
 
-    conexiones = [
-      ((980, 445), (980, 495)),
-      ((980, 495), (900, 535)),
-      ((980, 495), (980, 545)),
-      ((980, 545), (1060, 535)),
-      ((900, 535), (900, 595)),
-      ((980, 545), (980, 595)),
-      ((1060, 535), (1060, 595)),
-      ((900, 595), (945, 635)),
-      ((980, 595), (980, 622)),
-      ((1060, 595), (1015, 635)),
-    ]
-    for p1, p2 in conexiones:
-      pygame.draw.line(superficie, color_pasillo, p1, p2, 6)
-      pygame.draw.line(superficie, color_muro, p1, p2, 2)
+        conexiones = [
+          ((980, 445), (980, 495)),
+          ((980, 495), (900, 535)),
+          ((980, 495), (980, 545)),
+          ((980, 545), (1060, 535)),
+          ((900, 535), (900, 595)),
+          ((980, 545), (980, 595)),
+          ((1060, 535), (1060, 595)),
+          ((900, 595), (945, 635)),
+          ((980, 595), (980, 622)),
+          ((1060, 595), (1015, 635)),
+        ]
+        for p1, p2 in conexiones:
+            pygame.draw.line(superficie, color_pasillo, p1, p2, 6)
+            pygame.draw.line(superficie, color_muro, p1, p2, 2)
 
-    for cam_id, data in CAMARAS_PLANTA.items():
-      r = data["rect"]
-      sala_rect = r.inflate(14, 10)
-      pygame.draw.rect(superficie, color_sala, sala_rect)
-      pygame.draw.rect(superficie, color_muro, sala_rect, 1)
-  else:
-    color_tubo = (110, 65, 25)
-    color_borde_t = (190, 115, 45)
-    nodos_v = [
-      ((917, 446), (1047, 446)),
-      ((917, 446), (917, 536)),
-      ((1047, 446), (1047, 536)),
-      ((917, 536), (965, 622)),
-      ((1047, 536), (995, 622)),
-    ]
-    for p1, p2 in nodos_v:
-      pygame.draw.line(superficie, color_tubo, p1, p2, 8)
-      pygame.draw.line(superficie, color_borde_t, p1, p2, 2)
+        for cam_id, data in CAMARAS_PLANTA.items():
+            r = data["rect"]
+            sala_rect = r.inflate(14, 10)
+            pygame.draw.rect(superficie, color_sala, sala_rect)
+            pygame.draw.rect(superficie, color_muro, sala_rect, 1)
+    else:
+        color_tubo = (110, 65, 25)
+        color_borde_t = (190, 115, 45)
+        nodos_v = [
+          ((917, 446), (1047, 446)),
+          ((917, 446), (917, 536)),
+          ((1047, 446), (1047, 536)),
+          ((917, 536), (965, 622)),
+          ((1047, 536), (995, 622)),
+        ]
+        for p1, p2 in nodos_v:
+            pygame.draw.line(superficie, color_tubo, p1, p2, 8)
+            pygame.draw.line(superficie, color_borde_t, p1, p2, 2)
 
-  txt_plano = fuente_cam.render("PLANO SECTOR B // NIVEL 1", True, (80, 120, 100))
-  superficie.blit(txt_plano, (rect_mapa.left + 10, rect_mapa.top + 8))
+    txt_plano = fuente_cam.render("PLANO SECTOR B // NIVEL 1", True, (80, 120, 100))
+    superficie.blit(txt_plano, (rect_mapa.left + 10, rect_mapa.top + 8))
 
 # -------------------------------------------------------------
 # 9. Estados y Variables de Partida
@@ -497,18 +542,17 @@ ESTADO_JUEGO = "JUGANDO"
 ESTADO_VICTORIA = "VICTORIA_6AM"
 ESTADO_MINIJUEGO = "MINIJUEGO_8BIT"
 ESTADO_PERIODICO = "PANTALLA_PERIODICO"
+ESTADO_AJUSTES = "MENU_AJUSTES"
+ESTADO_RELATO = "RELATO"
+ESTADO_TITULO_NOCHE = "TITULO_NOCHE"
+ESTADO_ARCHIVO = "ARCHIVO_1982"
+ajustes_volver_a = "MENU"     # "MENU" o "PAUSA": a dónde vuelve el menú de ajustes
+ajustes_seleccion = 0
 
 tiempo_inicio_periodico = 0.0
+final_actual = None            # FINAL_NORMAL o FINAL_VERDADERO (historia.py)
 estado_actual = ESTADO_MENU
 noche_actual = 1
-
-DIFICULTAD_NOCHES = {
-  1: {"Barnaby": 3, "Silas": 2, "Penny": 1, "Rusty Bunny": 1},
-  2: {"Barnaby": 6, "Silas": 5, "Penny": 3, "Rusty Bunny": 4},
-  3: {"Barnaby": 9, "Silas": 8, "Penny": 6, "Rusty Bunny": 7},
-  4: {"Barnaby": 12, "Silas": 11, "Penny": 9, "Rusty Bunny": 10},
-  5: {"Barnaby": 15, "Silas": 14, "Penny": 13, "Rusty Bunny": 14},
-}
 
 cam_x = 300
 mirando_techo = False
@@ -530,7 +574,18 @@ apagon_bobina_activo = False
 tiempo_inicio_apagon_bobina = 0.0
 
 camara_seleccionada = "CAM_01"
-trampa_ducto = "VENT_02"
+trampa_ducto = None          # Ducto con la compuerta cerrada (None = ninguna)
+trampa_cooldown = 0.0        # Segundos hasta poder volver a cerrar una compuerta
+COOLDOWN_TRAMPA = 15.0
+
+# Botones de la pared derecha (coordenadas dentro de la oficina de 1800 px).
+# Se usan tanto para dibujarlos como para detectar el clic, así nunca se desalinean.
+RECT_BTN_PERSIANA = pygame.Rect(1720, 255, 50, 50)
+RECT_BTN_LUZ_DER = pygame.Rect(1720, 330, 50, 50)
+RECT_BTN_BOBINA = pygame.Rect(565, 200, 240, 34)  # Botón de la bobina dentro de CAM_08
+# Botones de la pared izquierda (más arriba para que no los tape el texto de batería)
+RECT_BTN_PUERTA_IZQ = pygame.Rect(40, 300, 50, 50)
+RECT_BTN_LUZ_IZQ = pygame.Rect(40, 375, 50, 50)
 
 bateria = 100.0
 oxigeno = 100.0
@@ -547,6 +602,11 @@ luz_der = False
 ventilacion_sellada = False
 
 vision_nocturna_cam = False
+carga_ir = 100.0             # La visión nocturna se descarga mientras está prendida
+ir_agotado = False           # Si se vacía, hay que esperar a que recupere el 40%
+DESCARGA_IR = 16.0           # % por segundo (unos 6 s de uso seguido)
+RECARGA_IR = 10.0
+ultimo_aviso_sonoro = {}     # Pistas de sonido: último momento en que sonó cada una
 glitch_cam_timer = 0.0
 progreso_cegado_barnaby = 0.0
 calor_linterna = 0.0
@@ -576,57 +636,6 @@ reboot_activo = None
 reboot_tiempo_inicio = 0.0
 DURACION_REBOOT = 3.5
 
-mj_jugador_x = 120.0
-mj_jugador_y = 480.0
-mj_tiempo_inicio = 0.0
-mj_anim_paso = 0
-mj_evento_activado = False
-mj_tiempo_evento = 0.0
-mj_cinta_recogida = False
-mj_valvulas_cerradas = 0
-mj_obstaculo_x = 900.0
-mj_noche_asociada = 1
-
-DIALOGOS_NOCHES = {
-  1: [
-    "--- TRANSMISIÓN ENTRANTE: SUPERVISIÓN DE TURNO (NOCHE 1) ---",
-    "¿Hola? ¿Me escuchas? Bien... bienvenido a la planta de ensamblaje.",
-    "A tu izquierda tienes la compuerta blindada [Tecla A]. Si ves a Penny, ciérrala.",
-    "A la derecha está la persiana: MANTÉN PRESIONADO EL BOTÓN contra Rusty Bunny.",
-    "En el techo [W / Arriba]: sellar con [ESPACIO] te deja sin aire. Cuidado.",
-    "El panel [M] reinicia turbinas y cámaras si fallan. Suerte."
-  ],
-  2: [
-    "--- TRANSMISIÓN ENTRANTE: SUPERVISIÓN DE TURNO (NOCHE 2) ---",
-    "Sigues de pie, me alegro. Los reportes de 1982 no eran fallas ordinarias.",
-    "Silas solía estar en la nave de prensas, pero aprendió a meterse en los tubos.",
-    "Agregamos un SEÑUELO DE AUDIO en el mapa de ventilación [CLIC EN SEÑUELO].",
-    "Si Silas se acerca a la escotilla, actívalo en un ducto vecino para despistarlo.",
-    "También instalamos visión nocturna IR [V / Clic Der] en cámaras para congelarlos."
-  ],
-  3: [
-    "--- TRANSMISIÓN ENTRANTE: SUPERVISIÓN DE TURNO (NOCHE 3) ---",
-    "Atención aquí: el generador auxiliar en la CAM_08 tiene fugas de voltaje.",
-    "Debes mantener presionada la cuerda de la bobina en CAM_08 para que no caiga a cero.",
-    "Si la bobina se descarga, las luces de la oficina fallarán y Rusty Bunny correrá.",
-    "No te descuides: la linterna frontal recalienta si la dejas encendida."
-  ],
-  4: [
-    "--- TRANSMISIÓN ENTRANTE: REGISTRO DE AUDIO ARCHIVADO (NOCHE 4) ---",
-    "Grabación 1982: 'La gerencia ordenó no apagar los hornos de calderas.'",
-    "Penny no debió ser ensamblada con esa matriz de aleación experimental.",
-    "Los sensores analógicos detectan vibraciones dentro de las paredes.",
-    "Si el nivel de oxígeno cae demasiado, sufrirás alucinaciones y sordera por hipoxia.",
-    "Vigila la bobina de la CAM_08 y mantén las turbinas ventilando a toda costa."
-  ],
-  5: [
-    "--- TRANSMISIÓN FINAL: ALERTA ROJA DE INSTALACIÓN (NOCHE 5) ---",
-    "Si estás escuchando esto, los protocolos de contención se han roto por completo.",
-    "Todas las unidades están en modo de sobremarcha autónoma buscando la oficina.",
-    "Recarga la bobina en CAM_08 constantemente y usa el señuelo contra Silas.",
-    "Si logras aguantar hasta las 6:00 AM, las puertas de la planta se sellarán solas."
-  ]
-}
 
 llamada_activa = False
 llamada_muteada = False
@@ -634,374 +643,289 @@ indice_dialogo = 0
 tiempo_ultimo_texto = 0.0
 tiempo_repique = 0.0
 
-CAMARAS_PLANTA = {
-  "CAM_01": {"nombre": "Línea Ensamblaje 1",  "rect": pygame.Rect(950, 425, 60, 28)},
-  "CAM_02": {"nombre": "Nave de Prensas",    "rect": pygame.Rect(950, 475, 60, 28)},
-  "CAM_03": {"nombre": "Calderas (Sin Video)", "rect": pygame.Rect(870, 520, 60, 28)},
-  "CAM_04": {"nombre": "Depósito Chatarra",   "rect": pygame.Rect(950, 525, 60, 28)},
-  "CAM_05": {"nombre": "Bahía de Carga",    "rect": pygame.Rect(1030, 520, 60, 28)},
-  "CAM_06": {"nombre": "Túnel Tuberías O.",   "rect": pygame.Rect(870, 575, 60, 28)},
-  "CAM_07": {"nombre": "Corredor Cintas",    "rect": pygame.Rect(950, 575, 60, 28)},
-  "CAM_08": {"nombre": "Generadores E.",    "rect": pygame.Rect(1030, 575, 60, 28)},
-}
-
-CAMARAS_VENT = {
-  "VENT_01": {"nombre": "Toma Aire Principal", "rect": pygame.Rect(880, 430, 75, 32)},
-  "VENT_02": {"nombre": "Bifurcación Norte",  "rect": pygame.Rect(1010, 430, 75, 32)},
-  "VENT_03": {"nombre": "Ducto Extractor E.",  "rect": pygame.Rect(880, 520, 75, 32)},
-  "VENT_04": {"nombre": "Ducto Techo Guardia", "rect": pygame.Rect(1010, 520, 75, 32)},
-}
-
 class Animatronico:
-  def __init__(self, nombre, ruta, nivel_ia, tiempo_tick):
-    self.nombre = nombre
-    self.ruta = ruta
-    self.nodo_actual = 0
-    self.nivel_ia = nivel_ia
-    self.tiempo_tick = tiempo_tick
-    self.ultimo_tick = time.time()
-    self.tiempo_en_ataque = 0.0
+    def __init__(self, nombre, ruta, nivel_ia, tiempo_tick, rutas_alternativas=None):
+        self.nombre = nombre
+        # Si hay rutas alternativas, cada vez que vuelve al inicio elige una al azar
+        self.rutas = rutas_alternativas or [ruta]
+        self.ruta = ruta
+        self.nodo_actual = 0
+        self.nivel_ia = nivel_ia
+        self.bonus_hora = 0          # Agresividad extra que se gana con las horas (2, 3 y 4 AM)
+        self.tiempo_tick = tiempo_tick
+        self.ultimo_tick = tiempo_juego()
+        self.tiempo_en_ataque = 0.0
+        self.pose = 0                # Variante de posición en cámara (cambia en cada movimiento)
 
-  def reiniciar(self, nivel_ia):
-    self.nodo_actual = 0
-    self.nivel_ia = nivel_ia
-    self.ultimo_tick = time.time()
-    self.tiempo_en_ataque = 0.0
+    def sala(self):
+        return self.ruta[self.nodo_actual]
 
-  def actualizar(self):
-    if self.nivel_ia <= 0:
-      return
+    def volver_al_inicio(self):
+        self.ruta = random.choice(self.rutas)
+        self.nodo_actual = 0
+        self.tiempo_en_ataque = 0.0
+        self.pose = random.randint(0, 2)
 
-    sala_actual = str(self.ruta[self.nodo_actual])
-    if monitor_abierto and progreso_monitor >= 0.95 and vision_nocturna_cam and not error_camaras and (camara_seleccionada in sala_actual):
-      self.ultimo_tick = time.time()
-      return
+    def reiniciar(self, nivel_ia):
+        self.volver_al_inicio()
+        self.nivel_ia = nivel_ia
+        self.bonus_hora = 0
+        self.ultimo_tick = tiempo_juego()
 
-    ahora = time.time()
-    tick_efectivo = self.tiempo_tick
-    if self.nombre == "Rusty Bunny" and apagon_bobina_activo:
-      tick_efectivo *= 0.5
+    def actualizar(self):
+        if self.nivel_ia <= 0 or dev_congelados:
+            return
 
-    if ahora - self.ultimo_tick >= tick_efectivo:
-      self.ultimo_tick = ahora
-      if random.randint(1, 20) <= self.nivel_ia:
-        self.avanzar()
+        sala_actual = str(self.ruta[self.nodo_actual])
+        if monitor_abierto and progreso_monitor >= 0.95 and vision_nocturna_cam and not error_camaras and (camara_seleccionada in sala_actual):
+            self.ultimo_tick = tiempo_juego()
+            return
 
-  def avanzar(self):
-    global glitch_cam_timer
-    if self.nodo_actual < len(self.ruta) - 1:
-      nodo_anterior = self.ruta[self.nodo_actual]
-      self.nodo_actual += 1
-      nodo_nuevo = self.ruta[self.nodo_actual]
+        ahora = tiempo_juego()
+        tick_efectivo = self.tiempo_tick
+        if self.nombre == "Rusty Bunny" and apagon_bobina_activo:
+            tick_efectivo *= 0.5
 
-      if monitor_abierto and (camara_seleccionada in str(nodo_anterior) or camara_seleccionada in str(nodo_nuevo)):
-        glitch_cam_timer = 0.45
-        reproducir_sonido(sfx_estatica_cctv, 0.9, 0.9)
+        if ahora - self.ultimo_tick >= tick_efectivo:
+            self.ultimo_tick = ahora
+            if random.randint(1, 20) <= min(20, self.nivel_ia + self.bonus_hora):
+                self.avanzar()
 
-      if self.nombre == "Penny":
-        reproducir_sonido(sfx_paso_metal, 0.9, 0.1)
-      elif self.nombre == "Rusty Bunny":
-        reproducir_sonido(sfx_paso_metal, 0.1, 0.9)
-      elif self.nombre == "Silas":
-        reproducir_sonido(sfx_conducto_metal, 0.6, 0.6)
-      elif self.nombre == "Barnaby":
-        reproducir_sonido(sfx_paso_metal, 0.5, 0.5)
+    def avanzar(self):
+        global glitch_cam_timer
+        if self.nodo_actual < len(self.ruta) - 1:
+            nodo_anterior = self.ruta[self.nodo_actual]
+            self.nodo_actual += 1
+            self.pose = random.randint(0, 2)
+            nodo_nuevo = self.ruta[self.nodo_actual]
+
+            if monitor_abierto and (camara_seleccionada in str(nodo_anterior) or camara_seleccionada in str(nodo_nuevo)):
+                glitch_cam_timer = 0.45
+                reproducir_sonido(sfx_estatica_cctv, 0.9, 0.9)
+
+            if self.nombre == "Penny":
+                reproducir_sonido(sfx_paso_metal, 0.9, 0.1)
+            elif self.nombre == "Rusty Bunny":
+                reproducir_sonido(sfx_paso_metal, 0.1, 0.9)
+            elif self.nombre == "Silas":
+                reproducir_sonido(sfx_conducto_metal, 0.6, 0.6)
+            elif self.nombre == "Barnaby":
+                reproducir_sonido(sfx_paso_metal, 0.5, 0.5)
 
 barnaby = Animatronico("Barnaby", ["CAM_01", "CAM_02", "CAM_07_LEJOS", "CAM_07_CERCA", "OFICINA"], 10, 7.5)
-silas = Animatronico("Silas", ["CAM_02_MESAS", "VENT_01", "VENT_02", "VENT_04", "REJILLA_OFICINA", "OFICINA"], 9, 8.0)
+silas = Animatronico("Silas", RUTA_SILAS_NORTE, 9, 8.0, [RUTA_SILAS_NORTE, RUTA_SILAS_OESTE])
 penny = Animatronico("Penny", ["CAM_01", "CAM_03", "CAM_06", "PUERTA_IZQ", "OFICINA"], 8, 8.5)
 bunny = Animatronico("Rusty Bunny", ["CAM_01", "CAM_04", "CAM_05", "CAM_08", "VENTANA_DER", "OFICINA"], 9, 7.8)
 
 def comenzar_noche(noche):
-  global cam_x, mirando_techo, monitor_abierto, modo_ventilacion, panel_mantenimiento_abierto
-  global camara_seleccionada, trampa_ducto, bateria, oxigeno, hora
-  global tiempo_inicio, puerta_izq_cerrada, luz_izq, linterna_pasillo
-  global persiana_der_sostenida, progreso_persiana, luz_der, ventilacion_sellada
-  global juego_terminado, mensaje_muerte, en_jumpscare, animatronico_atacante
-  global llamada_activa, llamada_muteada, indice_dialogo, tiempo_ultimo_texto, tiempo_repique
-  global estado_actual, noche_actual
-  global error_ventilacion, error_camaras, tiempo_siguiente_fallo, reboot_activo
-  global en_apagon, tiempo_inicio_apagon, indice_nota_apagon
-  global vision_nocturna_cam, glitch_cam_timer, progreso_cegado_barnaby, calor_linterna, linterna_sobrecalentada
-  global progreso_monitor, lure_cooldown, bobina_generador, bobina_cargando, apagon_bobina_activo
+    global cam_x, mirando_techo, monitor_abierto, modo_ventilacion, panel_mantenimiento_abierto
+    global camara_seleccionada, trampa_ducto, bateria, oxigeno, hora
+    global tiempo_inicio, puerta_izq_cerrada, luz_izq, linterna_pasillo
+    global persiana_der_sostenida, progreso_persiana, luz_der, ventilacion_sellada
+    global juego_terminado, mensaje_muerte, en_jumpscare, animatronico_atacante
+    global llamada_activa, llamada_muteada, indice_dialogo, tiempo_ultimo_texto, tiempo_repique
+    global estado_actual, noche_actual
+    global error_ventilacion, error_camaras, tiempo_siguiente_fallo, reboot_activo
+    global en_apagon, tiempo_inicio_apagon, indice_nota_apagon
+    global vision_nocturna_cam, glitch_cam_timer, progreso_cegado_barnaby, calor_linterna, linterna_sobrecalentada
+    global progreso_monitor, lure_cooldown, bobina_generador, bobina_cargando, apagon_bobina_activo
+    global trampa_cooldown, carga_ir, ir_agotado, pausado
 
-  noche_actual = noche
-  cam_x = 300
-  mirando_techo = False
-  monitor_abierto = False
-  progreso_monitor = 0.0
-  progreso_persiana = 0.0
-  modo_ventilacion = False
-  panel_mantenimiento_abierto = False
-  camara_seleccionada = "CAM_01"
-  trampa_ducto = "VENT_02"
-  bateria = 100.0
-  oxigeno = 100.0
-  hora = 12
-  tiempo_inicio = time.time()
-  puerta_izq_cerrada = False
-  luz_izq = False
-  linterna_pasillo = False
-  persiana_der_sostenida = False
-  luz_der = False
-  ventilacion_sellada = False
-  en_apagon = False
-  tiempo_inicio_apagon = 0.0
-  indice_nota_apagon = 0
-  juego_terminado = False
-  mensaje_muerte = ""
-  en_jumpscare = False
-  animatronico_atacante = ""
+    noche_actual = noche
+    cam_x = 300
+    mirando_techo = False
+    monitor_abierto = False
+    progreso_monitor = 0.0
+    progreso_persiana = 0.0
+    modo_ventilacion = False
+    panel_mantenimiento_abierto = False
+    camara_seleccionada = "CAM_01"
+    trampa_ducto = None
+    trampa_cooldown = 0.0
+    carga_ir = 100.0
+    ir_agotado = False
+    pausado = False
+    ultimo_aviso_sonoro.clear()
+    bateria = 100.0
+    oxigeno = 100.0
+    hora = 12
+    tiempo_inicio = tiempo_juego()
+    puerta_izq_cerrada = False
+    luz_izq = False
+    linterna_pasillo = False
+    persiana_der_sostenida = False
+    luz_der = False
+    ventilacion_sellada = False
+    en_apagon = False
+    tiempo_inicio_apagon = 0.0
+    indice_nota_apagon = 0
+    juego_terminado = False
+    mensaje_muerte = ""
+    en_jumpscare = False
+    animatronico_atacante = ""
 
-  vision_nocturna_cam = False
-  glitch_cam_timer = 0.0
-  progreso_cegado_barnaby = 0.0
-  calor_linterna = 0.0
-  linterna_sobrecalentada = False
+    vision_nocturna_cam = False
+    glitch_cam_timer = 0.0
+    progreso_cegado_barnaby = 0.0
+    calor_linterna = 0.0
+    linterna_sobrecalentada = False
 
-  lure_cooldown = 0.0
-  bobina_generador = 100.0
-  bobina_cargando = False
-  apagon_bobina_activo = False
+    lure_cooldown = 0.0
+    bobina_generador = 100.0
+    bobina_cargando = False
+    apagon_bobina_activo = False
 
-  error_ventilacion = False
-  error_camaras = False
-  reboot_activo = None
-  tiempo_siguiente_fallo = time.time() + random.uniform(22.0, 40.0)
+    error_ventilacion = False
+    error_camaras = False
+    reboot_activo = None
+    tiempo_siguiente_fallo = tiempo_juego() + random.uniform(22.0, 40.0)
 
-  if noche == "CUSTOM":
-    difs = ia_custom
-  else:
-    difs = DIFICULTAD_NOCHES.get(noche, DIFICULTAD_NOCHES[1])
+    if noche == "CUSTOM":
+        difs = ia_custom
+    else:
+        difs = DIFICULTAD_NOCHES.get(noche, DIFICULTAD_NOCHES[1])
 
-  barnaby.reiniciar(difs["Barnaby"])
-  silas.reiniciar(difs["Silas"])
-  penny.reiniciar(difs["Penny"])
-  bunny.reiniciar(difs["Rusty Bunny"])
+    barnaby.reiniciar(difs["Barnaby"])
+    silas.reiniciar(difs["Silas"])
+    penny.reiniciar(difs["Penny"])
+    bunny.reiniciar(difs["Rusty Bunny"])
 
-  if isinstance(noche, int) and noche in DIALOGOS_NOCHES:
-    llamada_activa = True
-    llamada_muteada = False
-    indice_dialogo = 0
-    tiempo_ultimo_texto = time.time()
-    tiempo_repique = time.time()
-  else:
-    llamada_activa = False
+    CANAL_VOZ.stop()
+    if isinstance(noche, int) and noche in DIALOGOS_NOCHES:
+        if VOCES_LLAMADA.get(noche):
+            CANAL_VOZ.play(VOCES_LLAMADA[noche])
+        llamada_activa = True
+        llamada_muteada = False
+        indice_dialogo = 0
+        tiempo_ultimo_texto = tiempo_juego()
+        tiempo_repique = tiempo_juego()
+    else:
+        llamada_activa = False
 
-  estado_actual = ESTADO_JUEGO
+    estado_actual = ESTADO_JUEGO
 
 def iniciar_jumpscare(nombre, causa):
-  global en_jumpscare, animatronico_atacante, tiempo_inicio_jumpscare
-  global mensaje_muerte, monitor_abierto, mirando_techo, panel_mantenimiento_abierto, intensidad_shake
-  global progreso_monitor
-  en_jumpscare = True
-  animatronico_atacante = nombre
-  tiempo_inicio_jumpscare = time.time()
-  mensaje_muerte = causa
-  monitor_abierto = False
-  progreso_monitor = 0.0
-  mirando_techo = False
-  panel_mantenimiento_abierto = False
-  intensidad_shake = 30.0
-  reproducir_sonido(sfx_jumpscare)
-
-def iniciar_minijuego(noche):
-  global estado_actual, mj_jugador_x, mj_jugador_y, mj_tiempo_inicio
-  global mj_evento_activado, mj_tiempo_evento, mj_cinta_recogida, mj_valvulas_cerradas, mj_obstaculo_x, mj_noche_asociada
-  estado_actual = ESTADO_MINIJUEGO
-  mj_noche_asociada = noche if isinstance(noche, int) else 1
-  mj_jugador_x = 120.0
-  mj_jugador_y = 480.0
-  mj_tiempo_inicio = time.time()
-  mj_evento_activado = False
-  mj_tiempo_evento = 0.0
-  mj_cinta_recogida = False
-  mj_valvulas_cerradas = 0
-  mj_obstaculo_x = 900.0
+    global en_jumpscare, animatronico_atacante, tiempo_inicio_jumpscare
+    global mensaje_muerte, monitor_abierto, mirando_techo, panel_mantenimiento_abierto, intensidad_shake
+    global progreso_monitor
+    en_jumpscare = True
+    animatronico_atacante = nombre
+    tiempo_inicio_jumpscare = tiempo_juego()
+    mensaje_muerte = causa
+    monitor_abierto = False
+    progreso_monitor = 0.0
+    mirando_techo = False
+    panel_mantenimiento_abierto = False
+    intensidad_shake = 30.0
+    reproducir_sonido(GRITOS.get(nombre) or sfx_jumpscare)
+    CANAL_VOZ.stop()
 
 # -------------------------------------------------------------
-# 10. Minijuegos 8-Bit Distintos por Noche
+# 10. Cintas de 1982 (minijuegos), relatos y títulos de noche
 # -------------------------------------------------------------
-def actualizar_y_dibujar_minijuego(dt):
-  global mj_jugador_x, mj_jugador_y, mj_anim_paso, mj_evento_activado, mj_tiempo_evento
-  global mj_cinta_recogida, mj_valvulas_cerradas, mj_obstaculo_x, estado_actual
+CTX_MINIJUEGOS = {
+    "fuentes": {"cam": fuente_cam, "8bit": fuente_8bit, "pequeña": fuente_pequeña, "media": fuente_media,
+                "grande": fuente_grande, "titulo": fuente_titulo},
+    "sonar": lambda clave, vol=0.8: reproducir_sonido({
+        "paso": sfx_paso_8bit, "glitch": sfx_glitch_8bit, "ok": sfx_reboot_click, "error": sfx_alarma_error,
+        "explosion": sfx_apagon_down, "prueba": sfx_campana_2}.get(clave, sfx_reboot_click), vol, vol),
+}
+minijuego_actual = None
+minijuego_numero = 1
+minijuego_origen = "NOCHE"        # "NOCHE" (después de ganar una noche) o "ARCHIVO" (repetición desde el menú)
+relato_actual = None
+relato_despues = None             # Función que se llama cuando termina el relato
+noche_a_presentar = 1
+t_titulo_noche = 0.0
 
-  pantalla.fill((8, 10, 12))
-  pygame.draw.rect(pantalla, (25, 20, 24), (60, 60, ANCHO_VENTANA - 120, ALTO_VENTANA - 120))
-  pygame.draw.rect(pantalla, (55, 45, 50), (60, 60, ANCHO_VENTANA - 120, ALTO_VENTANA - 120), 8)
+def iniciar_minijuego(numero, origen="NOCHE"):
+    global estado_actual, minijuego_actual, minijuego_numero, minijuego_origen
+    minijuego_numero, minijuego_origen = numero, origen
+    minijuego_actual = crear_minijuego(numero, CTX_MINIJUEGOS)
+    estado_actual = ESTADO_MINIJUEGO
 
-  teclas = pygame.key.get_pressed()
-  moviendose = False
-  vel = 180.0 * dt
+def mostrar_relato(titulo, lineas, despues, color=(90, 220, 140)):
+    global estado_actual, relato_actual, relato_despues
+    relato_actual = Relato(CTX_MINIJUEGOS, titulo, lineas, color)
+    relato_despues = despues
+    estado_actual = ESTADO_RELATO
 
-  if not mj_evento_activado:
-    if teclas[pygame.K_LEFT] or teclas[pygame.K_a]:
-      mj_jugador_x -= vel
-      moviendose = True
-    if teclas[pygame.K_RIGHT] or teclas[pygame.K_d]:
-      mj_jugador_x += vel
-      moviendose = True
-    if teclas[pygame.K_UP] or teclas[pygame.K_w]:
-      mj_jugador_y -= vel
-      moviendose = True
-    if teclas[pygame.K_DOWN] or teclas[pygame.K_s]:
-      mj_jugador_y += vel
-      moviendose = True
-
-  mj_jugador_x = max(100, min(ANCHO_VENTANA - 150, mj_jugador_x))
-  mj_jugador_y = max(300, min(ALTO_VENTANA - 150, mj_jugador_y))
-
-  if moviendose:
-    mj_anim_paso += 1
-    if mj_anim_paso % 18 == 0:
-      reproducir_sonido(sfx_paso_8bit)
-
-  px = int(mj_jugador_x)
-  py = int(mj_jugador_y)
-
-  if mj_noche_asociada == 1:
-    for y in range(80, 240, 25):
-      for x in range(80, ANCHO_VENTANA - 100, 50):
-        offset = 20 if (y // 25) % 2 == 0 else 0
-        pygame.draw.rect(pantalla, (45, 30, 35), (x + offset, y, 44, 20))
-    for y in range(260, ALTO_VENTANA - 80, 40):
-      pygame.draw.line(pantalla, (18, 15, 18), (80, y), (ANCHO_VENTANA - 80, y), 2)
-
-    pygame.draw.rect(pantalla, (60, 65, 75), (500, 200, 180, 160))
-    pygame.draw.rect(pantalla, (90, 95, 110), (520, 220, 140, 120))
-
-    rect_cinta = pygame.Rect(950, 460, 30, 20)
-    if not mj_cinta_recogida:
-      pygame.draw.rect(pantalla, (220, 180, 60), rect_cinta)
-      pygame.draw.rect(pantalla, (30, 30, 30), (955, 465, 8, 8))
-      pygame.draw.rect(pantalla, (30, 30, 30), (967, 465, 8, 8))
-
-    rect_jugador = pygame.Rect(px, py - 40, 45, 90)
-    if rect_jugador.colliderect(rect_cinta) and not mj_cinta_recogida:
-      mj_cinta_recogida = True
-      mj_evento_activado = True
-      mj_tiempo_evento = time.time()
-      reproducir_sonido(sfx_glitch_8bit)
-
-    txt_l1 = fuente_8bit.render("REGISTRO 1982 // NOCHE 1: EL CASSETTE PERDIDO", True, (240, 240, 240))
-    pantalla.blit(txt_l1, (90, 80))
-    if not mj_cinta_recogida:
-      txt_guia = fuente_8bit.render("> ENCUENTRA LA CINTA DE SEGURIDAD AL FINAL DEL SECTOR", True, (200, 200, 80))
-      pantalla.blit(txt_guia, (90, 110))
-    else:
-      txt_lore1 = fuente_8bit.render("CINTA RECUPERADA: 'LOS SERVOS ACTIVARON SOLOS A LAS 3 AM'", True, (255, 60, 60))
-      txt_lore2 = fuente_8bit.render("LA PLANTA OCULTÓ EL ACCIDENTE DE 1982.", True, (255, 200, 200))
-      pantalla.blit(txt_lore1, (90, 110))
-      pantalla.blit(txt_lore2, (90, 135))
-
-  elif mj_noche_asociada == 2:
-    pygame.draw.rect(pantalla, (40, 18, 12), (70, 70, ANCHO_VENTANA - 140, ALTO_VENTANA - 140))
-    for x in [350, 650, 950]:
-      pygame.draw.rect(pantalla, (70, 30, 20), (x - 20, 280, 40, 220))
-      if int(time.time() * 4) % 2 == 0 and not mj_evento_activado:
-        pygame.draw.circle(pantalla, (230, 230, 240), (x, 260), random.randint(12, 22))
-
-    valvulas = [pygame.Rect(330, 450, 40, 40), pygame.Rect(630, 450, 40, 40), pygame.Rect(930, 450, 40, 40)]
-    for i, v in enumerate(valvulas):
-      c_valv = (80, 220, 80) if i < mj_valvulas_cerradas else (220, 60, 40)
-      pygame.draw.rect(pantalla, c_valv, v)
-      pygame.draw.circle(pantalla, (255, 255, 255), v.center, 8)
-
-    rect_jugador = pygame.Rect(px, py - 40, 45, 90)
-    for i, v in enumerate(valvulas):
-      if rect_jugador.colliderect(v) and i == mj_valvulas_cerradas:
-        mj_valvulas_cerradas += 1
-        reproducir_sonido(sfx_reboot_click)
-        if mj_valvulas_cerradas >= 3:
-          mj_evento_activado = True
-          mj_tiempo_evento = time.time()
-          reproducir_sonido(sfx_glitch_8bit)
-
-    txt_l1 = fuente_8bit.render("REGISTRO 1982 // NOCHE 2: FUGAS EN CALDERAS", True, (240, 240, 240))
-    pantalla.blit(txt_l1, (90, 80))
-    if not mj_evento_activado:
-      txt_guia = fuente_8bit.render(f"> CIERRA LAS 3 VÁLVULAS DE PRESIÓN ROJAS [{mj_valvulas_cerradas}/3]", True, (240, 160, 60))
-      pantalla.blit(txt_guia, (90, 110))
-    else:
-      txt_lore1 = fuente_8bit.render("VÁLVULAS SELLADAS // PENNY FUE VISTA DE PIE JUNTO AL FUEGO", True, (255, 60, 60))
-      txt_lore2 = fuente_8bit.render("LAS LLAMAS NO CONSUMIERON SU ENDOESQUELETO.", True, (255, 200, 200))
-      pantalla.blit(txt_lore1, (90, 110))
-      pantalla.blit(txt_lore2, (90, 135))
-
-  elif mj_noche_asociada == 3:
-    for x in range(120, ANCHO_VENTANA - 120, 160):
-      pygame.draw.rect(pantalla, (20, 35, 45), (x, 260, 110, 260))
-      pygame.draw.rect(pantalla, (45, 75, 90), (x, 260, 110, 260), 4)
-
-    rect_filtro = pygame.Rect(980, 340, 45, 45)
-    pygame.draw.rect(pantalla, (60, 180, 240), rect_filtro)
-    pygame.draw.line(pantalla, (255, 255, 255), (rect_filtro.left + 5, rect_filtro.centery), (rect_filtro.right - 5, rect_filtro.centery), 3)
-
-    rect_jugador = pygame.Rect(px, py - 40, 45, 90)
-    if rect_jugador.colliderect(rect_filtro) and not mj_evento_activado:
-      mj_evento_activado = True
-      mj_tiempo_evento = time.time()
-      reproducir_sonido(sfx_glitch_8bit)
-
-    txt_l1 = fuente_8bit.render("REGISTRO 1982 // NOCHE 3: ESCANEO DE DUCTOS", True, (240, 240, 240))
-    pantalla.blit(txt_l1, (90, 80))
-    if not mj_evento_activado:
-      txt_guia = fuente_8bit.render("> ACTIVA LA TURBINA AZUL AL FINAL DEL DUCTO", True, (100, 220, 255))
-      pantalla.blit(txt_guia, (90, 110))
-    else:
-      txt_lore1 = fuente_8bit.render("TURBINA FORZADA // ALGO SALIÓ ARRASTRÁNDOSE HACIA EL TECHO", True, (255, 60, 60))
-      txt_lore2 = fuente_8bit.render("SILAS NUNCA VOLVIÓ A BAJAR DE LAS TUBERÍAS SUPERIORES.", True, (255, 200, 200))
-      pantalla.blit(txt_lore1, (90, 110))
-      pantalla.blit(txt_lore2, (90, 135))
-
-  else:
-    for x in [240, 520, 800]:
-      pygame.draw.rect(pantalla, (30, 28, 35), (x, 260, 140, 220))
-      pygame.draw.rect(pantalla, (60, 55, 70), (x, 260, 140, 220), 4)
-
-    rect_llave = pygame.Rect(1020, 440, 35, 20)
-    if not mj_evento_activado:
-      pygame.draw.rect(pantalla, (240, 210, 50), rect_llave)
-      pygame.draw.circle(pantalla, (240, 210, 50), (rect_llave.left, rect_llave.centery), 10)
-
-    mj_obstaculo_x -= 65.0 * dt
-    if mj_obstaculo_x < 180:
-      mj_obstaculo_x = 980.0
-    bx = int(mj_obstaculo_x)
-    pygame.draw.rect(pantalla, (12, 10, 14), (bx, 310, 60, 140))
-    pygame.draw.circle(pantalla, (180, 230, 255), (bx + 20, 330), 4)
-    pygame.draw.circle(pantalla, (180, 230, 255), (bx + 40, 330), 4)
-
-    rect_jugador = pygame.Rect(px, py - 40, 45, 90)
-    if rect_jugador.colliderect(rect_llave) and not mj_evento_activado:
-      mj_evento_activado = True
-      mj_tiempo_evento = time.time()
-      reproducir_sonido(sfx_glitch_8bit)
-
-    txt_l1 = fuente_8bit.render("REGISTRO 1982 // NOCHE 4: ARCHIVO MAESTRO", True, (240, 240, 240))
-    pantalla.blit(txt_l1, (90, 80))
-    if not mj_evento_activado:
-      txt_guia = fuente_8bit.render("> RECUPERA LA LLAVE DORADA MAESTRA EVITANDO LA SOMBRA", True, (240, 220, 80))
-      pantalla.blit(txt_guia, (90, 110))
-    else:
-      txt_lore1 = fuente_8bit.render("LLAVE RECUPERADA // SECTOR BLOQUEADO POR PROTOCOLO", True, (255, 60, 60))
-      txt_lore2 = fuente_8bit.render("MAÑANA A LAS 6 AM ESTE LUGAR QUEDARÁ CLAUSURADO.", True, (255, 200, 200))
-      pantalla.blit(txt_lore1, (90, 110))
-      pantalla.blit(txt_lore2, (90, 135))
-
-  pygame.draw.rect(pantalla, (235, 185, 140), (px + 10, py - 40, 24, 24))
-  pygame.draw.rect(pantalla, (40, 40, 50), (px + 6, py - 46, 32, 10))
-  pygame.draw.rect(pantalla, (35, 80, 160), (px + 6, py - 16, 32, 40))
-  pygame.draw.rect(pantalla, (220, 220, 100), (px + 36, py - 6, 12, 8))
-
-  offset_pie = 6 if (mj_anim_paso // 10) % 2 == 0 else -6
-  pygame.draw.rect(pantalla, (25, 45, 90), (px + 8 + offset_pie, py + 24, 12, 28))
-  pygame.draw.rect(pantalla, (25, 45, 90), (px + 24 - offset_pie, py + 24, 12, 28))
-
-  if mj_evento_activado and (time.time() - mj_tiempo_evento >= 4.5):
+def ir_al_menu():
+    global estado_actual
     estado_actual = ESTADO_MENU
-  elif time.time() - mj_tiempo_inicio >= 30.0:
-    estado_actual = ESTADO_MENU
+
+def presentar_noche(noche):
+    """Pantalla 'NOCHE X' antes de empezar (como en FNAF)."""
+    global estado_actual, noche_a_presentar, t_titulo_noche
+    noche_a_presentar, t_titulo_noche = noche, tiempo_juego()
+    estado_actual = ESTADO_TITULO_NOCHE
+
+def dibujar_titulo_noche():
+    pantalla.fill((0, 0, 0))
+    t = tiempo_juego() - t_titulo_noche
+    alfa = max(0, min(255, int(255 * min(t / 0.6, (3.4 - t) / 0.6))))
+    capa = pygame.Surface((ANCHO_VENTANA, ALTO_VENTANA), pygame.SRCALPHA)
+    for texto, fuente, y, color in [("12:00 AM", fuente_reloj_6am, 250, (240, 240, 240)),
+                                    (f"NOCHE {noche_a_presentar}", fuente_grande, 345, (220, 60, 60)),
+                                    (TITULOS_NOCHE.get(noche_a_presentar, ""), fuente_pequeña, 395, (150, 160, 165))]:
+        sup = fuente.render(texto, True, color)
+        capa.blit(sup, (ANCHO_VENTANA // 2 - sup.get_width() // 2, y))
+    capa.set_alpha(alfa)
+    pantalla.blit(capa, (0, 0))
+
+def cinta_disponible(n):
+    return noche_desbloqueada > n or juego_completado_5_noches
+
+def botones_archivo():
+    return [pygame.Rect(150 + (n - 1) * 230, 200, 210, 300) for n in (1, 2, 3, 4)]
+
+RECT_ARCHIVO_VOLVER = pygame.Rect(ANCHO_VENTANA // 2 - 140, 590, 280, 50)
+
+def dibujar_archivo():
+    pantalla.fill((8, 10, 12))
+    txt = fuente_titulo.render("ARCHIVO 1982", True, (220, 230, 235))
+    pantalla.blit(txt, (ANCHO_VENTANA // 2 - txt.get_width() // 2, 50))
+    sub = fuente_pequeña.render(f"CINTAS RECUPERADAS DEL SISTEMA DE SEGURIDAD  //  PRUEBAS: {len(evidencias)}/4", True, (130, 160, 150))
+    pantalla.blit(sub, (ANCHO_VENTANA // 2 - sub.get_width() // 2, 115))
+    pos = pygame.mouse.get_pos()
+    for n, rect in zip((1, 2, 3, 4), botones_archivo()):
+        abierta = cinta_disponible(n)
+        hover = abierta and rect.collidepoint(pos)
+        pygame.draw.rect(pantalla, (28, 34, 32) if hover else (16, 20, 20), rect, border_radius=8)
+        pygame.draw.rect(pantalla, (60, 160, 110) if abierta else (50, 55, 58), rect, 2, border_radius=8)
+        # Cassette
+        c = pygame.Rect(rect.x + 30, rect.y + 25, rect.w - 60, 90)
+        pygame.draw.rect(pantalla, (40, 40, 44) if abierta else (24, 26, 28), c, border_radius=6)
+        pygame.draw.rect(pantalla, (210, 200, 170) if abierta else (60, 60, 60), (c.x + 12, c.y + 10, c.w - 24, 30))
+        for cx in (c.x + 45, c.right - 45):
+            pygame.draw.circle(pantalla, (15, 15, 15), (cx, c.y + 65), 13)
+            pygame.draw.circle(pantalla, (90, 90, 90), (cx, c.y + 65), 5)
+        etiqueta = fuente_cam.render(f"CINTA {n}", True, (40, 30, 20) if abierta else (90, 90, 90))
+        pantalla.blit(etiqueta, (c.centerx - etiqueta.get_width() // 2, c.y + 18))
+        datos_c = CINTAS[n]
+        if abierta:
+            nombre = datos_c["personaje"].split(",")[0]
+            for k, linea in enumerate([nombre, datos_c["titulo"].split("//")[-1].strip()]):
+                s_ = fuente_cam.render(linea, True, (220, 225, 220))
+                pantalla.blit(s_, (rect.centerx - s_.get_width() // 2, rect.y + 135 + k * 20))
+            if n in evidencias:
+                partes = partir_texto(datos_c["prueba"], fuente_cam, rect.w - 20)
+                for k, linea in enumerate(["PRUEBA:"] + partes):
+                    s_ = fuente_cam.render(linea, True, (255, 210, 90))
+                    pantalla.blit(s_, (rect.centerx - s_.get_width() // 2, rect.y + 195 + k * 18))
+            else:
+                s_ = fuente_cam.render("PRUEBA: ???", True, (120, 120, 120))
+                pantalla.blit(s_, (rect.centerx - s_.get_width() // 2, rect.y + 195))
+            s_ = fuente_pequeña.render("[ REPRODUCIR ]", True, (90, 230, 150) if hover else (110, 160, 140))
+            pantalla.blit(s_, (rect.centerx - s_.get_width() // 2, rect.bottom - 35))
+        else:
+            for k, linea in enumerate(["BLOQUEADA", f"Supera la noche {n}"]):
+                s_ = fuente_cam.render(linea, True, (110, 110, 110))
+                pantalla.blit(s_, (rect.centerx - s_.get_width() // 2, rect.y + 150 + k * 22))
+    if len(evidencias) == 4:
+        s_ = fuente_pequeña.render("TIENES TODAS LAS PRUEBAS. SOBREVIVE A LA NOCHE 5 PARA USARLAS.", True, (255, 210, 90))
+        pantalla.blit(s_, (ANCHO_VENTANA // 2 - s_.get_width() // 2, 530))
+    dibujar_boton_menu(RECT_ARCHIVO_VOLVER, "[ESC] VOLVER", (40, 160, 110))
 
 # -------------------------------------------------------------
 # 11. Renderizado de Oficina (Normal y En Apagón)
@@ -1041,6 +965,10 @@ def dibujar_oficina():
             pygame.draw.line(superficie_oficina, (35, 38, 42), (1190, y_rem), (1710, y_rem), 2)
             for x_rem in range(1210, 1700, 70):
                 pygame.draw.circle(superficie_oficina, (48, 52, 56), (x_rem, y_rem), 3)
+
+    if ASSETS.get("oficina_base"):
+        dibujar_oficina_con_imagen(luz_izq_efectiva, luz_der_efectiva)
+        return
 
     # --- 2. VENTANA INDUSTRIAL HORIZONTAL CON VIDRIO (X: 1220, Y: 220, 480x240 px) ---
     rect_ventana = pygame.Rect(1220, 220, 480, 240)
@@ -1083,7 +1011,7 @@ def dibujar_oficina():
 
     # Rusty Bunny asomándose tras el vidrio en la ventana horizontal
     if bunny.nodo_actual == 4 and progreso_persiana < 0.6:
-        sp_bunny = ASSETS.get("bunny_ventana") or ASSETS.get("bunny_cam")
+        sp_bunny = sprite("bunny_ventana") or sprite("bunny_cam")
         brillo_b = 255 if luz_der_efectiva else 40
         dibujar_sprite_centrado(superficie_oficina, sp_bunny, 1450, 345, 0.72, brillo_b)
 
@@ -1107,8 +1035,8 @@ def dibujar_oficina():
     pygame.draw.line(superficie_oficina, (74, 80, 86), (rect_repisa.left, rect_repisa.top), (rect_repisa.right, rect_repisa.top), 2)
 
     # Botones industriales a la derecha del marco horizontal
-    dibujar_boton_industrial(superficie_oficina, 1720, 255, 50, 50, persiana_der_sostenida, (240, 160, 30), "PERSIANA")
-    dibujar_boton_industrial(superficie_oficina, 1720, 330, 50, 50, luz_der_efectiva, (255, 240, 80), "LUZ")
+    dibujar_boton_industrial(superficie_oficina, *RECT_BTN_PERSIANA, persiana_der_sostenida, (240, 160, 30), "PERSIANA")
+    dibujar_boton_industrial(superficie_oficina, *RECT_BTN_LUZ_DER, luz_der_efectiva, (255, 240, 80), "LUZ")
 
     # --- 3. ELEMENTOS DE MANTENIMIENTO Y PUERTA IZQUIERDA ---
     if en_apagon:
@@ -1116,10 +1044,10 @@ def dibujar_oficina():
         capa_oscura.fill((0, 0, 0, 225))
         superficie_oficina.blit(capa_oscura, (0, 0))
 
-        t_ap = time.time() - tiempo_inicio_apagon
+        t_ap = tiempo_juego() - tiempo_inicio_apagon
         if 2.5 < t_ap < 12.0:
             if random.random() < 0.75:
-                sp_b = ASSETS.get("barnaby_oficina") or ASSETS.get("barnaby_cam")
+                sp_b = sprite("barnaby_oficina") or sprite("barnaby_cam")
                 dibujar_sprite_centrado(superficie_oficina, sp_b, 900, 360, 0.95, 45)
                 pygame.draw.circle(superficie_oficina, (160, 235, 255), (882, 305), 7)
                 pygame.draw.circle(superficie_oficina, (160, 235, 255), (918, 305), 7)
@@ -1156,12 +1084,12 @@ def dibujar_oficina():
         dibujar_puerta_blindada(superficie_oficina, rect_puerta)
     else:
         if penny.nodo_actual == 3:
-            sp_penny = ASSETS.get("penny_puerta") or ASSETS.get("penny_cam")
+            sp_penny = sprite("penny_puerta") or sprite("penny_cam")
             brillo_p = 255 if luz_izq_efectiva else 35
             dibujar_sprite_centrado(superficie_oficina, sp_penny, 230, 420, 1.0, brillo_p)
 
-    dibujar_boton_industrial(superficie_oficina, 40, 470, 50, 50, puerta_izq_cerrada, (240, 40, 40), "PUERTA")
-    dibujar_boton_industrial(superficie_oficina, 40, 545, 50, 50, luz_izq_efectiva, (255, 240, 80), "LUZ")
+    dibujar_boton_industrial(superficie_oficina, *RECT_BTN_PUERTA_IZQ, puerta_izq_cerrada, (240, 40, 40), "PUERTA")
+    dibujar_boton_industrial(superficie_oficina, *RECT_BTN_LUZ_IZQ, luz_izq_efectiva, (255, 240, 80), "LUZ")
 
     # Pasillo Frontal y Barnaby
     if linterna_pasillo:
@@ -1173,7 +1101,7 @@ def dibujar_oficina():
             pygame.draw.ellipse(haz, (255, 245, 190, 65), (30, 20, 440, 360))
             superficie_oficina.blit(haz, (650, 180))
 
-        sp_barnaby = ASSETS.get("barnaby_oficina") or ASSETS.get("barnaby_cam")
+        sp_barnaby = sprite("barnaby_oficina") or sprite("barnaby_cam")
         if barnaby.nodo_actual == 2:
             dibujar_sprite_centrado(superficie_oficina, sp_barnaby, 900, 360, 0.58, 180)
         elif barnaby.nodo_actual == 3:
@@ -1185,42 +1113,45 @@ def dibujar_oficina():
             pygame.draw.rect(superficie_oficina, (255, 220, 60), (830, 210, ancho_b, 10))
             pygame.draw.rect(superficie_oficina, (200, 200, 200), (830, 210, 140, 10), 1)
 
-    # --- 4. TROFEOS APOYADOS EN LA MESA (SUPERFICIE Y = 520, X = 740 y X = 815) ---
-    y_mesa = 520
+    # --- 4. TROFEOS APOYADOS EN LA MESA ---
+    dibujar_trofeos(520, 0)
+
+def dibujar_trofeos(y_mesa, dx):
+    """Trofeos sobre el escritorio. y_mesa = altura de la superficie, dx = corrimiento horizontal."""
 
     if juego_completado_5_noches or noche_desbloqueada >= 5:
         # Sombra proyectada directamente sobre el tablero
         s_base1 = pygame.Surface((52, 14), pygame.SRCALPHA)
         pygame.draw.ellipse(s_base1, (0, 0, 0, 190), (0, 0, 52, 14))
-        superficie_oficina.blit(s_base1, (718, y_mesa - 5))
+        superficie_oficina.blit(s_base1, (dx + 718, y_mesa - 5))
 
         # Base de madera oscura
-        pygame.draw.rect(superficie_oficina, (28, 20, 14), (722, y_mesa - 16, 44, 16), border_radius=2)
-        pygame.draw.rect(superficie_oficina, (52, 38, 28), (724, y_mesa - 14, 40, 12), border_radius=1)
-        pygame.draw.rect(superficie_oficina, (190, 195, 205), (734, y_mesa - 10, 20, 6))
+        pygame.draw.rect(superficie_oficina, (28, 20, 14), (dx + 722, y_mesa - 16, 44, 16), border_radius=2)
+        pygame.draw.rect(superficie_oficina, (52, 38, 28), (dx + 724, y_mesa - 14, 40, 12), border_radius=1)
+        pygame.draw.rect(superficie_oficina, (190, 195, 205), (dx + 734, y_mesa - 10, 20, 6))
 
         # Copa de plata
-        pygame.draw.rect(superficie_oficina, (120, 128, 136), (740, y_mesa - 34, 8, 20))
-        pygame.draw.line(superficie_oficina, (220, 230, 240), (742, y_mesa - 34), (742, y_mesa - 15), 2)
-        pygame.draw.polygon(superficie_oficina, (140, 150, 160), [(732, y_mesa - 56), (756, y_mesa - 56), (750, y_mesa - 34), (738, y_mesa - 34)])
-        pygame.draw.polygon(superficie_oficina, (225, 235, 245), [(737, y_mesa - 56), (744, y_mesa - 56), (741, y_mesa - 34)])
-        pygame.draw.circle(superficie_oficina, (170, 180, 192), (744, y_mesa - 58), 13)
-        pygame.draw.circle(superficie_oficina, (230, 240, 250), (744, y_mesa - 58), 8)
-        pygame.draw.circle(superficie_oficina, (255, 255, 255), (742, y_mesa - 60), 2)
+        pygame.draw.rect(superficie_oficina, (120, 128, 136), (dx + 740, y_mesa - 34, 8, 20))
+        pygame.draw.line(superficie_oficina, (220, 230, 240), (dx + 742, y_mesa - 34), (dx + 742, y_mesa - 15), 2)
+        pygame.draw.polygon(superficie_oficina, (140, 150, 160), [(dx + 732, y_mesa - 56), (dx + 756, y_mesa - 56), (dx + 750, y_mesa - 34), (dx + 738, y_mesa - 34)])
+        pygame.draw.polygon(superficie_oficina, (225, 235, 245), [(dx + 737, y_mesa - 56), (dx + 744, y_mesa - 56), (dx + 741, y_mesa - 34)])
+        pygame.draw.circle(superficie_oficina, (170, 180, 192), (dx + 744, y_mesa - 58), 13)
+        pygame.draw.circle(superficie_oficina, (230, 240, 250), (dx + 744, y_mesa - 58), 8)
+        pygame.draw.circle(superficie_oficina, (255, 255, 255), (dx + 742, y_mesa - 60), 2)
 
     if record_20_20_20_20:
         # Sombra proyectada directamente sobre el tablero
         s_base2 = pygame.Surface((56, 14), pygame.SRCALPHA)
         pygame.draw.ellipse(s_base2, (0, 0, 0, 190), (0, 0, 56, 14))
-        superficie_oficina.blit(s_base2, (790, y_mesa - 5))
+        superficie_oficina.blit(s_base2, (dx + 790, y_mesa - 5))
 
         # Base de caoba con placa dorada
-        pygame.draw.rect(superficie_oficina, (32, 16, 12), (794, y_mesa - 18, 48, 18), border_radius=2)
-        pygame.draw.rect(superficie_oficina, (58, 30, 22), (796, y_mesa - 16, 44, 14), border_radius=1)
-        pygame.draw.rect(superficie_oficina, (220, 180, 50), (806, y_mesa - 12, 24, 7))
+        pygame.draw.rect(superficie_oficina, (32, 16, 12), (dx + 794, y_mesa - 18, 48, 18), border_radius=2)
+        pygame.draw.rect(superficie_oficina, (58, 30, 22), (dx + 796, y_mesa - 16, 44, 14), border_radius=1)
+        pygame.draw.rect(superficie_oficina, (220, 180, 50), (dx + 806, y_mesa - 12, 24, 7))
 
         # Busto dorado de Barnaby
-        cx, cy = 818, y_mesa - 44
+        cx, cy = dx + 818, y_mesa - 44
         pygame.draw.circle(superficie_oficina, (140, 105, 15), (cx - 15, cy - 14), 7)
         pygame.draw.circle(superficie_oficina, (230, 185, 45), (cx - 15, cy - 14), 4)
         pygame.draw.circle(superficie_oficina, (140, 105, 15), (cx + 15, cy - 14), 7)
@@ -1241,204 +1172,430 @@ def dibujar_oficina():
         pygame.draw.circle(superficie_oficina, (255, 255, 255), (cx - 7, cy - 4), 1)
         pygame.draw.circle(superficie_oficina, (255, 255, 255), (cx + 5, cy - 4), 1)
 
+# --- Zonas de la imagen de oficina (coordenadas ya escaladas a 1800x700) ---
+# Si cambiás la imagen o ANCLA_Y_OFICINA, ajustá estos rectángulos.
+RECT_PUERTA_IMG = pygame.Rect(172, 25, 285, 660)     # Hueco de la puerta blindada izquierda
+CENTRO_PASILLO_IMG = (900, 330)                      # Fondo del pasillo (Barnaby)
+Y_MESA_IMG = 628                                     # Superficie del escritorio
+DX_TROFEOS_IMG = 175                                 # Trofeos sobre los papeles, lejos del teléfono
+
+# --- Ventana derecha en perspectiva (medida sobre oficina_base.png escalada a 1800x700) ---
+# Los bordes izquierdo y derecho son verticales; las líneas de arriba/abajo están inclinadas.
+# Cada línea se da como (y en el borde izquierdo, y en el borde derecho).
+VENT_X0, VENT_X1 = 1298, 1714
+LINEA_TECHO_PERSIANA = (127, 23)    # Donde la persiana sale de la caja
+LINEA_BARRA_PERSIANA = (250, 158)   # Borde inferior de la persiana enrollada (lo que ya se ve en la imagen)
+LINEA_BASE_VIDRIO = (470, 565)      # Hasta donde baja la persiana al cerrarse
+_ALTO_RECT = 130                    # Alto de la textura "enderezada" de las láminas
+_FILAS_BARRA = 32                   # Filas de la barra inferior (con la manija)
+_ALTO_TEXTURA = 620
+
+def y_en_linea(linea, x):
+    t = (x - VENT_X0) / (VENT_X1 - VENT_X0)
+    return linea[0] + (linea[1] - linea[0]) * t
+
+def poligono_vidrio():
+    return [(VENT_X0, LINEA_BARRA_PERSIANA[0]), (VENT_X1, LINEA_BARRA_PERSIANA[1]),
+            (VENT_X1, LINEA_BASE_VIDRIO[1]), (VENT_X0, LINEA_BASE_VIDRIO[0])]
+
+_PERIODO_LAMINA = 14                # Alto de cada lámina en la textura enderezada
+
+def _crear_textura_persiana(fondo):
+    """Arma una persiana larga con los colores y el óxido de la persiana enrollada de la imagen.
+    Las láminas se dibujan limpias (las de la foto no son paralelas y al estirarlas se ondulan)."""
+    ancho = VENT_X1 - VENT_X0
+    recta = pygame.Surface((ancho, _ALTO_RECT))
+    for i in range(ancho):
+        x = VENT_X0 + i
+        yt = int(y_en_linea(LINEA_TECHO_PERSIANA, x))
+        yb = int(y_en_linea(LINEA_BARRA_PERSIANA, x))
+        col = fondo.subsurface((x, yt, 1, yb - yt))
+        recta.blit(pygame.transform.smoothscale(col, (1, _ALTO_RECT)), (i, 0))
+
+    # Color de fondo: la foto muy suavizada (solo manchas de óxido y luz, sin las rayas)
+    cuerpo = recta.subsurface((0, 30, ancho, _ALTO_RECT - _FILAS_BARRA - 30))
+    manchas = pygame.transform.smoothscale(pygame.transform.smoothscale(cuerpo, (max(1, ancho // 12), 3)), (ancho, 96))
+    manchas.fill((25, 25, 25), special_flags=pygame.BLEND_RGB_ADD)   # un poco más clara
+
+    alta = pygame.Surface((ancho, _ALTO_TEXTURA))
+    y = _ALTO_TEXTURA - _FILAS_BARRA
+    while y > 0:
+        y -= manchas.get_height()
+        alta.blit(manchas, (0, y))
+
+    # Relieve de cada lámina: brillo arriba, sombra en la ranura de abajo
+    perfil = [255, 235, 215, 205, 200, 195, 190, 185, 178, 170, 160, 140, 95, 70]
+    for fila in range(_ALTO_TEXTURA - _FILAS_BARRA):
+        v = perfil[fila % _PERIODO_LAMINA]
+        alta.fill((v, v, v), (0, fila, ancho, 1), special_flags=pygame.BLEND_RGB_MULT)
+        if fila % _PERIODO_LAMINA == 0:
+            alta.fill((28, 28, 26), (0, fila, ancho, 1), special_flags=pygame.BLEND_RGB_ADD)
+
+    # La barra inferior (con la manija) sale tal cual de la foto
+    alta.blit(recta.subsurface((0, _ALTO_RECT - _FILAS_BARRA, ancho, _FILAS_BARRA)), (0, _ALTO_TEXTURA - _FILAS_BARRA))
+    return alta
+
+def _crear_capa_cadena(fondo, rect=pygame.Rect(1664, 0, 26, 470)):
+    """Recorta la cadena que cuelga delante de la ventana para dibujarla por encima de la persiana.
+    Se ignoran las filas oscuras que ocupan casi todo el ancho (son ranuras de las láminas, no cadena)."""
+    capa = pygame.Surface(rect.size, pygame.SRCALPHA)
+    for y in range(rect.h):
+        fila = []
+        for x in range(rect.w):
+            r, g, b, *_ = fondo.get_at((rect.x + x, rect.y + y))
+            fila.append((x, r, g, b, 0.3 * r + 0.59 * g + 0.11 * b))
+        oscuros = [f for f in fila if f[4] < 45]
+        if len(oscuros) > rect.w * 0.6:
+            continue
+        for x, r, g, b, lum in oscuros:
+            capa.set_at((x, y), (r, g, b, 255 if lum < 30 else 150))
+    return capa, rect.topleft
+
+TEXTURA_PERSIANA = _crear_textura_persiana(ASSETS["oficina_base"]) if ASSETS.get("oficina_base") else None
+CAPA_CADENA = _crear_capa_cadena(ASSETS["oficina_base"]) if ASSETS.get("oficina_base") else None
+_cache_persiana = {}
+
+def superficie_persiana(progreso):
+    """Persiana bajando en perspectiva. Se cachea en 40 pasos para no recalcular cada cuadro."""
+    paso = max(1, min(40, round(progreso * 40)))
+    if paso in _cache_persiana:
+        return _cache_persiana[paso]
+    p = paso / 40
+    ancho = VENT_X1 - VENT_X0
+    y_min = int(min(LINEA_TECHO_PERSIANA))
+    y_max = int(max(LINEA_BASE_VIDRIO))
+    sup = pygame.Surface((ancho, y_max - y_min), pygame.SRCALPHA)
+    for i in range(ancho):
+        x = VENT_X0 + i
+        yt = y_en_linea(LINEA_TECHO_PERSIANA, x)
+        h_base = y_en_linea(LINEA_BARRA_PERSIANA, x) - yt
+        h_full = y_en_linea(LINEA_BASE_VIDRIO, x) - yt
+        h = int(h_base + p * (h_full - h_base))
+        filas = min(_ALTO_TEXTURA, max(1, int(h * _ALTO_RECT / h_base)))
+        col = TEXTURA_PERSIANA.subsurface((i, _ALTO_TEXTURA - filas, 1, filas))
+        sup.blit(pygame.transform.smoothscale(col.convert(), (1, h)), (i, int(yt) - y_min))
+    _cache_persiana[paso] = (sup, y_min)
+    return _cache_persiana[paso]
+
+def dibujar_ventana_con_imagen(luz_der_efectiva):
+    poli = poligono_vidrio()
+    xs = [p[0] for p in poli]; ys = [p[1] for p in poli]
+    bbox = pygame.Rect(min(xs), min(ys), max(xs) - min(xs), max(ys) - min(ys))
+    poli_local = [(x - bbox.x, y - bbox.y) for x, y in poli]
+
+    # Oscuridad / luz del otro lado del vidrio
+    capa = pygame.Surface(bbox.size, pygame.SRCALPHA)
+    pygame.draw.polygon(capa, (0, 0, 0, 45) if luz_der_efectiva else (0, 0, 0, 185), poli_local)
+    superficie_oficina.blit(capa, bbox.topleft)
+    if luz_der_efectiva:
+        brillo = pygame.Surface(bbox.size, pygame.SRCALPHA)
+        pygame.draw.polygon(brillo, (45, 42, 22, 0), poli_local)
+        superficie_oficina.blit(brillo, bbox.topleft, special_flags=pygame.BLEND_RGB_ADD)
+
+    # Rusty Bunny detrás del vidrio (recortado con la forma de la ventana)
+    if bunny.nodo_actual == 4 and progreso_persiana < 0.6:
+        sp_bunny = sprite("bunny_ventana") or sprite("bunny_cam")
+        tmp = pygame.Surface(bbox.size, pygame.SRCALPHA)
+        dibujar_sprite_centrado(tmp, sp_bunny, bbox.w // 2 - 10, bbox.h // 2 + 40, 0.68, 255 if luz_der_efectiva else 45)
+        mascara = pygame.Surface(bbox.size, pygame.SRCALPHA)
+        pygame.draw.polygon(mascara, (255, 255, 255, 255), poli_local)
+        tmp.blit(mascara, (0, 0), special_flags=pygame.BLEND_RGBA_MULT)
+        superficie_oficina.blit(tmp, bbox.topleft)
+
+    # Persiana bajando
+    if progreso_persiana > 0.0 and TEXTURA_PERSIANA:
+        sup, y_min = superficie_persiana(progreso_persiana)
+        superficie_oficina.blit(sup, (VENT_X0, y_min))
+        if CAPA_CADENA:
+            superficie_oficina.blit(*CAPA_CADENA)
+
+def dibujar_oficina_con_imagen(luz_izq_efectiva, luz_der_efectiva):
+    # Fondo alternativo opcional: si existe oficina_puerta_abierta.png se usa con la puerta abierta
+    if not puerta_izq_cerrada and ASSETS.get("oficina_puerta_abierta"):
+        superficie_oficina.blit(ASSETS["oficina_puerta_abierta"], (0, 0))
+
+    # --- VENTANA DERECHA ---
+    dibujar_ventana_con_imagen(luz_der_efectiva)
+
+    dibujar_boton_industrial(superficie_oficina, *RECT_BTN_PERSIANA, persiana_der_sostenida, (240, 160, 30), "PERSIANA")
+    dibujar_boton_industrial(superficie_oficina, *RECT_BTN_LUZ_DER, luz_der_efectiva, (255, 240, 80), "LUZ")
+
+    # --- APAGÓN TOTAL ---
+    if en_apagon:
+        capa_oscura = pygame.Surface((ANCHO_OFICINA, ALTO_OFICINA), pygame.SRCALPHA)
+        capa_oscura.fill((0, 0, 0, 225))
+        superficie_oficina.blit(capa_oscura, (0, 0))
+        t_ap = tiempo_juego() - tiempo_inicio_apagon
+        if 2.5 < t_ap < 12.0 and random.random() < 0.75:
+            sp_b = sprite("barnaby_oficina") or sprite("barnaby_cam")
+            dibujar_sprite_centrado(superficie_oficina, sp_b, RECT_PUERTA_IMG.centerx, 400, 1.15, 45)
+        return
+
+    if apagon_bobina_activo:
+        parpadeo_falla = pygame.Surface((ANCHO_OFICINA, ALTO_OFICINA), pygame.SRCALPHA)
+        parpadeo_falla.fill((0, 0, 0, random.choice([160, 210, 140])))
+        superficie_oficina.blit(parpadeo_falla, (0, 0))
+
+    # --- TERMINAL DE MANTENIMIENTO (misma zona de clic que antes: 480-545 x 360-445) ---
+    rect_terminal_pared = pygame.Rect(480, 360, 65, 85)
+    pygame.draw.rect(superficie_oficina, (28, 32, 36), rect_terminal_pared, border_radius=4)
+    pygame.draw.rect(superficie_oficina, (48, 55, 62), rect_terminal_pared.inflate(-6, -6), border_radius=3)
+    pygame.draw.rect(superficie_oficina, (12, 14, 16), rect_terminal_pared, 2, border_radius=4)
+    color_luz_term = (240, 50, 50) if (error_ventilacion or error_camaras or apagon_bobina_activo) else (40, 220, 80)
+    pygame.draw.circle(superficie_oficina, (15, 18, 20), (512, 385), 10)
+    pygame.draw.circle(superficie_oficina, color_luz_term, (512, 385), 7)
+    superficie_oficina.blit(fuente_cam.render("MANT.", True, (180, 195, 205)), (494, 408))
+
+    # --- PUERTA IZQUIERDA ---
+    # La imagen ya muestra la puerta blindada cerrada. Con la puerta abierta se dibuja el hueco oscuro.
+    rp = RECT_PUERTA_IMG
+    if not puerta_izq_cerrada and not ASSETS.get("oficina_puerta_abierta"):
+        hueco = pygame.Surface(rp.size)
+        base = (34, 32, 20) if luz_izq_efectiva else (5, 6, 7)
+        hueco.fill(base)
+        for i in range(0, rp.height, 4):   # degradé: más oscuro arriba y al fondo
+            k = 0.55 + 0.45 * (i / rp.height)
+            pygame.draw.line(hueco, tuple(int(c * k) for c in base), (0, i), (rp.width, i), 4)
+        superficie_oficina.blit(hueco, rp.topleft)
+        pygame.draw.rect(superficie_oficina, (40, 38, 34), rp, 10)
+        pygame.draw.rect(superficie_oficina, (12, 12, 12), rp, 3)
+    if not puerta_izq_cerrada and penny.nodo_actual == 3:
+        sp_penny = sprite("penny_puerta") or sprite("penny_cam")
+        superficie_oficina.set_clip(rp)
+        dibujar_sprite_centrado(superficie_oficina, sp_penny, rp.centerx + 70, rp.centery + 40, 1.2, 255 if luz_izq_efectiva else 35)
+        superficie_oficina.set_clip(None)
+    if puerta_izq_cerrada:
+        # Luz roja de "sellada" sobre el marco
+        col = (230, 40, 40) if int(tiempo_juego() * 3) % 2 == 0 else (110, 20, 20)
+        pygame.draw.circle(superficie_oficina, (15, 15, 15), (rp.centerx, rp.top + 18), 11)
+        pygame.draw.circle(superficie_oficina, col, (rp.centerx, rp.top + 18), 7)
+
+    dibujar_boton_industrial(superficie_oficina, *RECT_BTN_PUERTA_IZQ, puerta_izq_cerrada, (240, 40, 40), "PUERTA")
+    dibujar_boton_industrial(superficie_oficina, *RECT_BTN_LUZ_IZQ, luz_izq_efectiva, (255, 240, 80), "LUZ")
+
+    # --- PASILLO FRONTAL: linterna y Barnaby ---
+    px, py = CENTRO_PASILLO_IMG
+    if linterna_pasillo:
+        haz = pygame.Surface((500, 420), pygame.SRCALPHA)
+        pygame.draw.ellipse(haz, (255, 245, 190, 55), (30, 20, 440, 380))
+        pygame.draw.ellipse(haz, (255, 245, 190, 35), (110, 80, 280, 260))
+        superficie_oficina.blit(haz, (px - 250, py - 200))
+
+        sp_barnaby = sprite("barnaby_oficina") or sprite("barnaby_cam")
+        if barnaby.nodo_actual == 2:
+            dibujar_sprite_centrado(superficie_oficina, sp_barnaby, px, py + 10, 0.45, 190)
+        elif barnaby.nodo_actual == 3:
+            dibujar_sprite_centrado(superficie_oficina, sp_barnaby, px, py + 60, 0.95, 255)
+
+        if barnaby.nodo_actual in [2, 3]:
+            ancho_b = int((progreso_cegado_barnaby / 1.4) * 140)
+            pygame.draw.rect(superficie_oficina, (20, 25, 30), (px - 70, 70, 140, 10))
+            pygame.draw.rect(superficie_oficina, (255, 220, 60), (px - 70, 70, ancho_b, 10))
+            pygame.draw.rect(superficie_oficina, (200, 200, 200), (px - 70, 70, 140, 10), 1)
+
+    dibujar_trofeos(Y_MESA_IMG, DX_TROFEOS_IMG)
+
+
 # -------------------------------------------------------------
 # 12. Vista Cenital
 # -------------------------------------------------------------
 def dibujar_vista_techo():
-  if ASSETS.get("techo_rejilla"):
-    pantalla.blit(ASSETS["techo_rejilla"], (0, 0))
-  else:
-    pantalla.fill((12, 14, 16))
+    if ASSETS.get("techo_rejilla"):
+        pantalla.blit(ASSETS["techo_rejilla"], (0, 0))
+    else:
+        pantalla.fill((12, 14, 16))
 
-  rect_escotilla = pygame.Rect(ANCHO_VENTANA//2 - 200, ALTO_VENTANA//2 - 200, 400, 400)
-  if ventilacion_sellada:
-    dibujar_ventilacion_techo_cerrada(pantalla, rect_escotilla)
-  else:
-    if not ASSETS.get("techo_rejilla"):
-      pygame.draw.rect(pantalla, (4, 5, 7), rect_escotilla)
-      for x in range(rect_escotilla.left + 30, rect_escotilla.right, 40):
-        pygame.draw.line(pantalla, (65, 70, 75), (x, rect_escotilla.top), (x, rect_escotilla.bottom), 5)
+    rect_escotilla = pygame.Rect(ANCHO_VENTANA//2 - 200, ALTO_VENTANA//2 - 200, 400, 400)
+    if ventilacion_sellada:
+        dibujar_ventilacion_techo_cerrada(pantalla, rect_escotilla)
+    else:
+        if not ASSETS.get("techo_rejilla"):
+            pygame.draw.rect(pantalla, (4, 5, 7), rect_escotilla)
+            for x in range(rect_escotilla.left + 30, rect_escotilla.right, 40):
+                pygame.draw.line(pantalla, (65, 70, 75), (x, rect_escotilla.top), (x, rect_escotilla.bottom), 5)
 
-    if silas.nodo_actual == 4:
-      sp_silas_t = ASSETS.get("silas_techo") or ASSETS.get("silas_vent")
-      dibujar_sprite_centrado(pantalla, sp_silas_t, ANCHO_VENTANA//2, ALTO_VENTANA//2 - 20, 1.0, 220)
-      txt_aviso = fuente_pequeña.render("¡SILAS EN LA REJILLA DEL TECHO!", True, (255, 90, 90))
-      pantalla.blit(txt_aviso, (ANCHO_VENTANA//2 - 130, ALTO_VENTANA//2 + 130))
+        if silas.sala() == "REJILLA_OFICINA":
+            sp_silas_t = sprite("silas_techo") or sprite("silas_vent")
+            dibujar_sprite_centrado(pantalla, sp_silas_t, ANCHO_VENTANA//2, ALTO_VENTANA//2 - 20, 1.0, 220)
+            txt_aviso = fuente_pequeña.render("¡SILAS EN LA REJILLA DEL TECHO!", True, (255, 90, 90))
+            pantalla.blit(txt_aviso, (ANCHO_VENTANA//2 - 130, ALTO_VENTANA//2 + 130))
 
-  txt_info = fuente_media.render("[ESPACIO] Sellar Compuerta - [ABAJO / S] Bajar a la Oficina", True, (200, 200, 200))
-  pantalla.blit(txt_info, (ANCHO_VENTANA//2 - 320, ALTO_VENTANA - 60))
+    txt_info = fuente_media.render("[ESPACIO] Sellar Compuerta - [ABAJO / S] Bajar a la Oficina", True, (200, 200, 200))
+    pantalla.blit(txt_info, (ANCHO_VENTANA//2 - 320, ALTO_VENTANA - 60))
 
 # -------------------------------------------------------------
 # 13. Panel de Mantenimiento
 # -------------------------------------------------------------
 def dibujar_panel_mantenimiento():
-  pantalla.fill((10, 14, 18))
-  pygame.draw.rect(pantalla, (20, 26, 32), (150, 80, 900, 540), border_radius=10)
-  pygame.draw.rect(pantalla, (50, 80, 100), (150, 80, 900, 540), 3)
+    pantalla.fill((10, 14, 18))
+    pygame.draw.rect(pantalla, (20, 26, 32), (150, 80, 900, 540), border_radius=10)
+    pygame.draw.rect(pantalla, (50, 80, 100), (150, 80, 900, 540), 3)
 
-  txt_t = fuente_grande.render("PANEL DE CONTROL Y MANTENIMIENTO", True, (220, 240, 255))
-  txt_sub = fuente_pequeña.render("SUBSISTEMAS INDUSTRIALES // TERMINAL REBOOT", True, (120, 160, 180))
-  pantalla.blit(txt_t, (ANCHO_VENTANA//2 - txt_t.get_width()//2, 110))
-  pantalla.blit(txt_sub, (ANCHO_VENTANA//2 - txt_sub.get_width()//2, 155))
+    txt_t = fuente_grande.render("PANEL DE CONTROL Y MANTENIMIENTO", True, (220, 240, 255))
+    txt_sub = fuente_pequeña.render("SUBSISTEMAS INDUSTRIALES // TERMINAL REBOOT", True, (120, 160, 180))
+    pantalla.blit(txt_t, (ANCHO_VENTANA//2 - txt_t.get_width()//2, 110))
+    pantalla.blit(txt_sub, (ANCHO_VENTANA//2 - txt_sub.get_width()//2, 155))
 
-  rect_box_v = pygame.Rect(220, 210, 760, 80)
-  pygame.draw.rect(pantalla, (14, 18, 22), rect_box_v, border_radius=6)
-  st_v = "ERROR CRÍTICO // PRESIÓN CERO" if error_ventilacion else "OPERACIONAL (100%)"
-  col_v = (240, 50, 50) if error_ventilacion else (40, 220, 80)
-  txt_v_lbl = fuente_panel.render("TURBINA DE VENTILACIÓN:", True, (200, 220, 230))
-  txt_v_val = fuente_panel.render(st_v, True, col_v)
-  pantalla.blit(txt_v_lbl, (240, 238))
-  pantalla.blit(txt_v_val, (480, 238))
+    rect_box_v = pygame.Rect(220, 210, 760, 80)
+    pygame.draw.rect(pantalla, (14, 18, 22), rect_box_v, border_radius=6)
+    st_v = "ERROR CRÍTICO // PRESIÓN CERO" if error_ventilacion else "OPERACIONAL (100%)"
+    col_v = (240, 50, 50) if error_ventilacion else (40, 220, 80)
+    txt_v_lbl = fuente_panel.render("TURBINA DE VENTILACIÓN:", True, (200, 220, 230))
+    txt_v_val = fuente_panel.render(st_v, True, col_v)
+    pantalla.blit(txt_v_lbl, (240, 238))
+    pantalla.blit(txt_v_val, (480, 238))
 
-  btn_reboot_v = pygame.Rect(780, 225, 180, 50)
-  pygame.draw.rect(pantalla, (35, 55, 75), btn_reboot_v, border_radius=4)
-  txt_b_v = fuente_cam.render("REINICIAR VENT.", True, (255, 255, 255))
-  pantalla.blit(txt_b_v, (btn_reboot_v.x + 35, btn_reboot_v.y + 18))
+    btn_reboot_v = pygame.Rect(780, 225, 180, 50)
+    pygame.draw.rect(pantalla, (35, 55, 75), btn_reboot_v, border_radius=4)
+    txt_b_v = fuente_cam.render("REINICIAR VENT.", True, (255, 255, 255))
+    pantalla.blit(txt_b_v, (btn_reboot_v.x + 35, btn_reboot_v.y + 18))
 
-  rect_box_c = pygame.Rect(220, 310, 760, 80)
-  pygame.draw.rect(pantalla, (14, 18, 22), rect_box_c, border_radius=6)
-  st_c = "SEÑAL PERDIDA // SIN VIDEO" if error_camaras else "OPERACIONAL (100%)"
-  col_c = (240, 50, 50) if error_camaras else (40, 220, 80)
-  txt_c_lbl = fuente_panel.render("MATRIZ DE CÁMARAS CCTV:", True, (200, 220, 230))
-  txt_c_val = fuente_panel.render(st_c, True, col_c)
-  pantalla.blit(txt_c_lbl, (240, 338))
-  pantalla.blit(txt_c_val, (480, 338))
+    rect_box_c = pygame.Rect(220, 310, 760, 80)
+    pygame.draw.rect(pantalla, (14, 18, 22), rect_box_c, border_radius=6)
+    st_c = "SEÑAL PERDIDA // SIN VIDEO" if error_camaras else "OPERACIONAL (100%)"
+    col_c = (240, 50, 50) if error_camaras else (40, 220, 80)
+    txt_c_lbl = fuente_panel.render("MATRIZ DE CÁMARAS CCTV:", True, (200, 220, 230))
+    txt_c_val = fuente_panel.render(st_c, True, col_c)
+    pantalla.blit(txt_c_lbl, (240, 338))
+    pantalla.blit(txt_c_val, (480, 338))
 
-  btn_reboot_c = pygame.Rect(780, 325, 180, 50)
-  pygame.draw.rect(pantalla, (35, 55, 75), btn_reboot_c, border_radius=4)
-  txt_b_c = fuente_cam.render("REINICIAR CCTV", True, (255, 255, 255))
-  pantalla.blit(txt_b_c, (btn_reboot_c.x + 40, btn_reboot_c.y + 18))
+    btn_reboot_c = pygame.Rect(780, 325, 180, 50)
+    pygame.draw.rect(pantalla, (35, 55, 75), btn_reboot_c, border_radius=4)
+    txt_b_c = fuente_cam.render("REINICIAR CCTV", True, (255, 255, 255))
+    pantalla.blit(txt_b_c, (btn_reboot_c.x + 40, btn_reboot_c.y + 18))
 
-  btn_reboot_all = pygame.Rect(ANCHO_VENTANA//2 - 160, 420, 320, 55)
-  pygame.draw.rect(pantalla, (70, 35, 25), btn_reboot_all, border_radius=6)
-  pygame.draw.rect(pantalla, (220, 100, 50), btn_reboot_all, 2)
-  txt_all = fuente_panel.render("[REINICIAR TODO]", True, (255, 220, 200))
-  pantalla.blit(txt_all, (btn_reboot_all.x + 75, btn_reboot_all.y + 16))
+    btn_reboot_all = pygame.Rect(ANCHO_VENTANA//2 - 160, 420, 320, 55)
+    pygame.draw.rect(pantalla, (70, 35, 25), btn_reboot_all, border_radius=6)
+    pygame.draw.rect(pantalla, (220, 100, 50), btn_reboot_all, 2)
+    txt_all = fuente_panel.render("[REINICIAR TODO]", True, (255, 220, 200))
+    pantalla.blit(txt_all, (btn_reboot_all.x + 75, btn_reboot_all.y + 16))
 
-  if reboot_activo:
-    prog = min(1.0, (time.time() - reboot_tiempo_inicio) / DURACION_REBOOT)
-    rect_barra_bg = pygame.Rect(300, 510, 600, 24)
-    pygame.draw.rect(pantalla, (20, 25, 30), rect_barra_bg)
-    pygame.draw.rect(pantalla, (40, 180, 240), (300, 510, int(600 * prog), 24))
-    pygame.draw.rect(pantalla, (100, 140, 180), rect_barra_bg, 2)
-    txt_prog = fuente_cam.render(f"RESTABLECIENDO SISTEMA... {int(prog * 100)}%", True, (220, 240, 255))
-    pantalla.blit(txt_prog, (ANCHO_VENTANA//2 - txt_prog.get_width()//2, 540))
+    if reboot_activo:
+        prog = min(1.0, (tiempo_juego() - reboot_tiempo_inicio) / DURACION_REBOOT)
+        rect_barra_bg = pygame.Rect(300, 510, 600, 24)
+        pygame.draw.rect(pantalla, (20, 25, 30), rect_barra_bg)
+        pygame.draw.rect(pantalla, (40, 180, 240), (300, 510, int(600 * prog), 24))
+        pygame.draw.rect(pantalla, (100, 140, 180), rect_barra_bg, 2)
+        txt_prog = fuente_cam.render(f"RESTABLECIENDO SISTEMA... {int(prog * 100)}%", True, (220, 240, 255))
+        pantalla.blit(txt_prog, (ANCHO_VENTANA//2 - txt_prog.get_width()//2, 540))
 
-  rect_cerrar_panel = pygame.Rect(ANCHO_VENTANA//2 - 110, 575, 220, 35)
-  pygame.draw.rect(pantalla, (40, 45, 50), rect_cerrar_panel, border_radius=4)
-  txt_ret = fuente_pequeña.render("[M / CLIC] VOLVER A OFICINA", True, (200, 210, 220))
-  pantalla.blit(txt_ret, (rect_cerrar_panel.x + 15, rect_cerrar_panel.y + 10))
+    rect_cerrar_panel = pygame.Rect(ANCHO_VENTANA//2 - 110, 575, 220, 35)
+    pygame.draw.rect(pantalla, (40, 45, 50), rect_cerrar_panel, border_radius=4)
+    txt_ret = fuente_pequeña.render("[M / CLIC] VOLVER A OFICINA", True, (200, 210, 220))
+    pantalla.blit(txt_ret, (rect_cerrar_panel.x + 15, rect_cerrar_panel.y + 10))
 
-  return btn_reboot_v, btn_reboot_c, btn_reboot_all, rect_cerrar_panel
+    return btn_reboot_v, btn_reboot_c, btn_reboot_all, rect_cerrar_panel
 
 # -------------------------------------------------------------
 # 14. Renderizado de Cámaras CCTV y Ventilación
 # -------------------------------------------------------------
+def con_pose(a, x, y, escala):
+    dx, dy, f = POSES_CAMARA[a.pose % len(POSES_CAMARA)]
+    return x + dx, y + dy, escala * f
+
 def dibujar_feed_ventilacion():
-  if trampa_ducto == camara_seleccionada and ASSETS.get("vent_bloqueada"):
-    pantalla_camaras.blit(pygame.transform.scale(ASSETS["vent_bloqueada"], (720, 480)), (100, 80))
-  elif ASSETS.get("vent_tunel"):
-    pantalla_camaras.blit(pygame.transform.scale(ASSETS["vent_tunel"], (720, 480)), (100, 80))
-  else:
-    pygame.draw.rect(pantalla_camaras, (22, 25, 27), (100, 80, 720, 480))
-    pygame.draw.rect(pantalla_camaras, (8, 10, 11), (300, 200, 320, 240))
+    if trampa_ducto == camara_seleccionada and ASSETS.get("vent_bloqueada"):
+        pantalla_camaras.blit(ASSETS["vent_bloqueada"], (100, 80))
+    elif ASSETS.get(camara_seleccionada.lower()) or ASSETS.get("vent_tunel"):
+        pantalla_camaras.blit(ASSETS.get(camara_seleccionada.lower()) or ASSETS["vent_tunel"], (100, 80))
+    else:
+        pygame.draw.rect(pantalla_camaras, (22, 25, 27), (100, 80, 720, 480))
+        pygame.draw.rect(pantalla_camaras, (8, 10, 11), (300, 200, 320, 240))
 
-  if trampa_ducto == camara_seleccionada and not ASSETS.get("vent_bloqueada"):
-    rect_compuerta = pygame.Rect(280, 185, 360, 265)
-    dibujar_compuerta_ducto_remota(pantalla_camaras, rect_compuerta)
+    if trampa_ducto == camara_seleccionada and not ASSETS.get("vent_bloqueada"):
+        rect_compuerta = pygame.Rect(280, 185, 360, 265)
+        dibujar_compuerta_ducto_remota(pantalla_camaras, rect_compuerta)
 
-  silas_en_cam = (
-    (camara_seleccionada == "VENT_01" and silas.nodo_actual == 1) or
-    (camara_seleccionada == "VENT_02" and silas.nodo_actual == 2) or
-    (camara_seleccionada == "VENT_04" and silas.nodo_actual == 3)
-  )
+    silas_en_cam = (
+      camara_seleccionada == silas.sala()
+    )
 
-  if silas_en_cam and trampa_ducto != camara_seleccionada:
-    pos_x, pos_y = 460, 335
-    dibujar_sprite_centrado(pantalla_camaras, ASSETS.get("silas_vent"), pos_x, pos_y, 0.70, 225)
+    if silas_en_cam and trampa_ducto != camara_seleccionada:
+        pos_x, pos_y, esc_s = con_pose(silas, 460, 335, 0.70)
+        dibujar_sprite_centrado(pantalla_camaras, sprite("silas_vent"), pos_x, pos_y, esc_s, 225, vivo=True)
 
 def dibujar_sistema_camaras():
-  pantalla_camaras.fill((8, 12, 10))
+    pantalla_camaras.fill((8, 12, 10))
 
-  # --- 1. RECORTE ESTRICTO DENTRO DE LA PANTALLA CCTV (720x480) ---
-  rect_pantalla_cctv = pygame.Rect(100, 80, 720, 480)
-  pantalla_camaras.set_clip(rect_pantalla_cctv)
+    # --- 1. RECORTE ESTRICTO DENTRO DE LA PANTALLA CCTV (720x480) ---
+    rect_pantalla_cctv = pygame.Rect(100, 80, 720, 480)
+    pantalla_camaras.set_clip(rect_pantalla_cctv)
 
-  if error_camaras:
-    pygame.draw.rect(pantalla_camaras, (12, 8, 8), rect_pantalla_cctv)
-    txt_err_cam = fuente_grande.render("[CCTV OFFLINE - SYSTEM ERROR]", True, (240, 50, 50))
-    txt_sub_err = fuente_pequeña.render("Fallo en tarjeta de video analógica. Reiniciar desde Panel [M].", True, (200, 120, 120))
-    pantalla_camaras.blit(txt_err_cam, (ANCHO_VENTANA//2 - txt_err_cam.get_width()//2 - 140, 270))
-    pantalla_camaras.blit(txt_sub_err, (ANCHO_VENTANA//2 - txt_sub_err.get_width()//2 - 140, 320))
-  elif modo_ventilacion:
-    dibujar_feed_ventilacion()
-  else:
-    # Fondo de la cámara escalado con precisión a 720x480
-    img_id = camara_seleccionada.lower()
-    if ASSETS.get(img_id):
-      feed_img = pygame.transform.scale(ASSETS[img_id], (720, 480))
-      pantalla_camaras.blit(feed_img, (100, 80))
+    if error_camaras:
+        pygame.draw.rect(pantalla_camaras, (12, 8, 8), rect_pantalla_cctv)
+        txt_err_cam = fuente_grande.render("[CCTV OFFLINE - SYSTEM ERROR]", True, (240, 50, 50))
+        txt_sub_err = fuente_pequeña.render("Fallo en tarjeta de video analógica. Reiniciar desde Panel [M].", True, (200, 120, 120))
+        pantalla_camaras.blit(txt_err_cam, (ANCHO_VENTANA//2 - txt_err_cam.get_width()//2 - 140, 270))
+        pantalla_camaras.blit(txt_sub_err, (ANCHO_VENTANA//2 - txt_sub_err.get_width()//2 - 140, 320))
+    elif modo_ventilacion:
+        dibujar_feed_ventilacion()
     else:
-      pygame.draw.rect(pantalla_camaras, (18, 22, 20), rect_pantalla_cctv)
-      if camara_seleccionada == "CAM_03":
-        txt_alerta = fuente_grande.render("[SEÑAL PERDIDA - FALLO EN SENSOR CCTV]", True, (160, 60, 60))
-        pantalla_camaras.blit(txt_alerta, (140, 260))
+        # Fondo de la cámara escalado con precisión a 720x480
+        img_id = camara_seleccionada.lower()
+        if ASSETS.get(img_id):
+            feed_img = ASSETS[img_id]
+            pantalla_camaras.blit(feed_img, (100, 80))
+        else:
+            pygame.draw.rect(pantalla_camaras, (18, 22, 20), rect_pantalla_cctv)
+            if camara_seleccionada == "CAM_03":
+                txt_alerta = fuente_grande.render("[SEÑAL PERDIDA - FALLO EN SENSOR CCTV]", True, (160, 60, 60))
+                pantalla_camaras.blit(txt_alerta, (140, 260))
 
-    brillo_boost = 35 if vision_nocturna_cam else 0
+        brillo_boost = 35 if vision_nocturna_cam else 0
 
-    # Posicionamiento calibrado de animatrónicos en el feed
-    if camara_seleccionada == "CAM_01":
-      if barnaby.nodo_actual == 0:
-        dibujar_sprite_centrado(pantalla_camaras, ASSETS.get("barnaby_cam"), 460, 340, 0.62, min(255, 230 + brillo_boost))
-      if penny.nodo_actual == 0:
-        dibujar_sprite_centrado(pantalla_camaras, ASSETS.get("penny_cam"), 280, 350, 0.55, min(255, 220 + brillo_boost))
-      if bunny.nodo_actual == 0:
-        dibujar_sprite_centrado(pantalla_camaras, ASSETS.get("bunny_cam"), 640, 340, 0.58, min(255, 225 + brillo_boost))
+        # Posicionamiento calibrado de animatrónicos en el feed
+        if camara_seleccionada == "CAM_01":
+            if barnaby.nodo_actual == 0:
+                dibujar_sprite_centrado(pantalla_camaras, sprite("barnaby_cam"), 460, 340, 0.62, min(255, 230 + brillo_boost), vivo=True)
+            if penny.nodo_actual == 0:
+                dibujar_sprite_centrado(pantalla_camaras, sprite("penny_cam"), 280, 350, 0.55, min(255, 220 + brillo_boost), vivo=True)
+            if bunny.nodo_actual == 0:
+                dibujar_sprite_centrado(pantalla_camaras, sprite("bunny_cam"), 640, 340, 0.58, min(255, 225 + brillo_boost), vivo=True)
 
-    elif camara_seleccionada == "CAM_02":
-      if barnaby.nodo_actual == 1:
-        dibujar_sprite_centrado(pantalla_camaras, ASSETS.get("barnaby_cam"), 460, 330, 0.65, min(255, 220 + brillo_boost))
+        elif camara_seleccionada == "CAM_02":
+            if barnaby.nodo_actual == 1:
+                dibujar_sprite_centrado(pantalla_camaras, sprite("barnaby_cam"), *con_pose(barnaby, 460, 330, 0.65), min(255, 220 + brillo_boost), vivo=True)
 
-    elif camara_seleccionada == "CAM_03":
-      if penny.nodo_actual == 1:
-        txt_audio = fuente_media.render("[AUDIO: PISADAS METÁLICAS EN CALDERA]", True, (240, 180, 80))
-        pantalla_camaras.blit(txt_audio, (170, 360))
+        elif camara_seleccionada == "CAM_03":
+            if penny.nodo_actual == 1:
+                txt_audio = fuente_media.render("[AUDIO: PISADAS METÁLICAS EN CALDERA]", True, (240, 180, 80))
+                pantalla_camaras.blit(txt_audio, (170, 360))
 
-    elif camara_seleccionada == "CAM_04":
-      if bunny.nodo_actual == 1:
-        dibujar_sprite_centrado(pantalla_camaras, ASSETS.get("bunny_cam"), 460, 335, 0.62, min(255, 215 + brillo_boost))
+        elif camara_seleccionada == "CAM_04":
+            if bunny.nodo_actual == 1:
+                dibujar_sprite_centrado(pantalla_camaras, sprite("bunny_cam"), *con_pose(bunny, 460, 335, 0.62), min(255, 215 + brillo_boost), vivo=True)
 
-    elif camara_seleccionada == "CAM_05":
-      if bunny.nodo_actual == 2:
-        dibujar_sprite_centrado(pantalla_camaras, ASSETS.get("bunny_cam"), 460, 335, 0.68, min(255, 220 + brillo_boost))
+        elif camara_seleccionada == "CAM_05":
+            if bunny.nodo_actual == 2:
+                dibujar_sprite_centrado(pantalla_camaras, sprite("bunny_cam"), *con_pose(bunny, 460, 335, 0.68), min(255, 220 + brillo_boost), vivo=True)
 
-    elif camara_seleccionada == "CAM_06":
-      if penny.nodo_actual == 2:
-        dibujar_sprite_centrado(pantalla_camaras, ASSETS.get("penny_cam"), 460, 335, 0.68, min(255, 220 + brillo_boost))
+        elif camara_seleccionada == "CAM_06":
+            if penny.nodo_actual == 2:
+                dibujar_sprite_centrado(pantalla_camaras, sprite("penny_cam"), *con_pose(penny, 460, 335, 0.68), min(255, 220 + brillo_boost), vivo=True)
 
-    elif camara_seleccionada == "CAM_07":
-      if barnaby.nodo_actual in [2, 3]:
-        pos_y = 310 if barnaby.nodo_actual == 2 else 345
-        escala_b = 0.50 if barnaby.nodo_actual == 2 else 0.75
-        brillo_b = 180 if barnaby.nodo_actual == 2 else 245
-        dibujar_sprite_centrado(pantalla_camaras, ASSETS.get("barnaby_cam"), 460, pos_y, escala_b, min(255, brillo_b + brillo_boost))
+        elif camara_seleccionada == "CAM_07":
+            if barnaby.nodo_actual in [2, 3]:
+                pos_y = 310 if barnaby.nodo_actual == 2 else 345
+                escala_b = 0.50 if barnaby.nodo_actual == 2 else 0.75
+                brillo_b = 180 if barnaby.nodo_actual == 2 else 245
+                dibujar_sprite_centrado(pantalla_camaras, sprite("barnaby_cam"), 460, pos_y, escala_b, min(255, brillo_b + brillo_boost), vivo=True)
 
-    elif camara_seleccionada == "CAM_08":
+        elif camara_seleccionada == "CAM_08":
             if bunny.nodo_actual == 3:
-                dibujar_sprite_centrado(pantalla_camaras, ASSETS.get("bunny_cam"), 460, 335, 0.72, min(255, 235 + brillo_boost))
+                dibujar_sprite_centrado(pantalla_camaras, sprite("bunny_cam"), *con_pose(bunny, 460, 335, 0.72), min(255, 235 + brillo_boost), vivo=True)
 
-            rect_bobina_box = pygame.Rect(120, 100, 240, 75)
+            rect_bobina_box = pygame.Rect(565, 115, 240, 75)
             pygame.draw.rect(pantalla_camaras, (20, 24, 28), rect_bobina_box, border_radius=6)
             pygame.draw.rect(pantalla_camaras, (50, 70, 85), rect_bobina_box, 2)
 
             col_bob = (50, 220, 90) if bobina_generador > 45 else ((240, 180, 40) if bobina_generador > 20 else (240, 50, 50))
             txt_b_tag = fuente_cam.render("BOBINA GENERADOR AUXILIAR", True, (210, 225, 235))
-            pantalla_camaras.blit(txt_b_tag, (130, 108))
+            pantalla_camaras.blit(txt_b_tag, (575, 123))
 
-            pygame.draw.rect(pantalla_camaras, (10, 12, 14), (130, 130, 220, 18), border_radius=3)
-            pygame.draw.rect(pantalla_camaras, col_bob, (130, 130, int(220 * (bobina_generador / 100.0)), 18), border_radius=3)
+            pygame.draw.rect(pantalla_camaras, (10, 12, 14), (575, 145, 220, 18), border_radius=3)
+            pygame.draw.rect(pantalla_camaras, col_bob, (575, 145, int(220 * (bobina_generador / 100.0)), 18), border_radius=3)
 
-            rect_btn_bobina = pygame.Rect(120, 185, 240, 34)
+            rect_btn_bobina = RECT_BTN_BOBINA
             col_btn_bob = (40, 160, 220) if bobina_cargando else (30, 45, 55)
             pygame.draw.rect(pantalla_camaras, col_btn_bob, rect_btn_bobina, border_radius=4)
             txt_btn_c = "[MANTENER: CARGAR BOBINA]" if not bobina_cargando else "[CARGANDO ENERGÍA...]"
@@ -1461,15 +1618,18 @@ def dibujar_sistema_camaras():
                 if not anomalia_detectada_previa:
                     reproducir_sonido(sfx_ir_lock, 0.7, 0.7)
                     anomalia_detectada_previa = True
-                txt_nv = fuente_cam.render("[IR LOCK // ANOMALÍA PARALIZADA]", True, (255, 75, 75))
+                txt_nv = fuente_cam.render(f"[IR LOCK // ANOMALÍA PARALIZADA - {int(carga_ir)}%]", True, (255, 75, 75))
                 pygame.draw.rect(pantalla_camaras, (255, 60, 60), (310, 190, 300, 280), 2)
             else:
                 anomalia_detectada_previa = False
-                txt_nv = fuente_cam.render("[VISIÓN NOCTURNA IR: ACTIVA - CLIC DER / V]", True, (100, 255, 140))
-            pantalla_camaras.blit(txt_nv, (115, 92))
+                txt_nv = fuente_cam.render(f"[VISIÓN NOCTURNA IR: {int(carga_ir)}% - CLIC DER / V]", True, (100, 255, 140))
+            pantalla_camaras.blit(txt_nv, (805 - txt_nv.get_width(), 92))
         else:
-            txt_nv = fuente_cam.render("[CLIC DER / V] VISIÓN NOCTURNA IR", True, (120, 150, 135))
-            pantalla_camaras.blit(txt_nv, (115, 92))
+            if ir_agotado:
+                txt_nv = fuente_cam.render(f"[IR RECARGANDO... {int(carga_ir)}%]", True, (220, 120, 80))
+            else:
+                txt_nv = fuente_cam.render(f"[CLIC DER / V] VISIÓN NOCTURNA IR ({int(carga_ir)}%)", True, (120, 150, 135))
+            pantalla_camaras.blit(txt_nv, (805 - txt_nv.get_width(), 92))
 
         if glitch_cam_timer > 0:
             pantalla_camaras.fill((12, 16, 14), rect_pantalla_cctv)
@@ -1519,6 +1679,15 @@ def dibujar_sistema_camaras():
         lbl_lure = fuente_cam.render(txt_lure, True, (255, 255, 255) if puede_usar_lure else (160, 160, 160))
         pantalla_camaras.blit(lbl_lure, (btn_lure.centerx - lbl_lure.get_width() // 2, btn_lure.centery - 6))
 
+        if trampa_ducto:
+            txt_trampa, col_trampa = f"COMPUERTA CERRADA EN {trampa_ducto.replace('_', ' ')}", (255, 120, 120)
+        elif trampa_cooldown > 0.0:
+            txt_trampa, col_trampa = f"COMPUERTA REARMANDO ({int(trampa_cooldown) + 1}s)", (160, 160, 160)
+        else:
+            txt_trampa, col_trampa = "COMPUERTA LISTA: CLIC DER EN UN DUCTO", (120, 230, 160)
+        lbl_trampa = fuente_cam.render(txt_trampa, True, col_trampa)
+        pantalla_camaras.blit(lbl_trampa, (btn_lure.centerx - lbl_trampa.get_width() // 2, btn_lure.top - 20))
+
     rect_minimapa = pygame.Rect(840, 390, 330, 275)
     pygame.draw.rect(pantalla_camaras, (10, 15, 12), rect_minimapa)
     dibujar_plano_minimapa(pantalla_camaras, rect_minimapa, modo_ventilacion)
@@ -1555,6 +1724,24 @@ def dibujar_jumpscare(progreso):
 
     cx = ANCHO_VENTANA // 2
     cy = ALTO_VENTANA // 2
+
+    img_js = sprite(f"jumpscare_{animatronico_atacante}", fps=14)
+    if img_js:
+                # Embestida: arranca un poco lejos y se abalanza contra la cámara en el primer 15%
+        t = min(1.0, progreso / 0.15)
+        factor = 0.72 + 0.28 * (1 - (1 - t) ** 3)
+        w, h = int(img_js.get_width() * factor), int(img_js.get_height() * factor)
+        frame = pygame.transform.scale(img_js, (w, h))
+        # Parpadeo de señal: algunos cuadros salen oscurecidos
+        if random.random() < 0.12:
+            frame.fill((90, 90, 90), special_flags=pygame.BLEND_RGB_MULT)
+        pantalla.blit(frame, (cx - w // 2, cy - h // 2))
+        # Fundido a negro al final
+        if progreso > 0.8:
+            negro = pygame.Surface((ANCHO_VENTANA, ALTO_VENTANA))
+            negro.set_alpha(int(255 * (progreso - 0.8) / 0.2))
+            pantalla.blit(negro, (0, 0))
+        return
     escala = 1.0 + (progreso * 1.8)
     pygame.draw.circle(pantalla, (220, 40, 40), (cx, cy), int(100 * escala))
 
@@ -1566,41 +1753,53 @@ def dibujar_jumpscare(progreso):
 # -------------------------------------------------------------
 # 16. Subtítulos, Menús y Periódico de Victoria
 # -------------------------------------------------------------
+def partir_texto(texto, fuente, ancho_max):
+    """Divide un texto en líneas que entren en ancho_max píxeles."""
+    lineas, actual = [], ""
+    for palabra in texto.split():
+        prueba = (actual + " " + palabra).strip()
+        if fuente.size(prueba)[0] <= ancho_max or not actual:
+            actual = prueba
+        else:
+            lineas.append(actual)
+            actual = palabra
+    if actual:
+        lineas.append(actual)
+    return lineas
+
 def dibujar_panel_llamada():
     lista_actual = DIALOGOS_NOCHES.get(noche_actual, DIALOGOS_NOCHES[1])
     if llamada_activa and not llamada_muteada and not en_apagon and indice_dialogo < len(lista_actual):
-        rect_caja = pygame.Rect(40, 20, 720, 65)
+        rect_caja = pygame.Rect(40, 20, 720, 82)
         s_caja = pygame.Surface((rect_caja.width, rect_caja.height), pygame.SRCALPHA)
         s_caja.fill((12, 16, 20, 230))
         pantalla.blit(s_caja, (rect_caja.x, rect_caja.y))
         pygame.draw.rect(pantalla, (50, 90, 80), rect_caja, 2)
 
-        if int(time.time() * 3) % 2 == 0:
+        if int(tiempo_juego() * 3) % 2 == 0:
             pygame.draw.circle(pantalla, (40, 240, 120), (rect_caja.x + 20, rect_caja.y + 22), 6)
         txt_tag = fuente_cam.render(f"LÍNEA ACTIVA // SUPERVISIÓN TURNO {noche_actual}", True, (40, 240, 120))
         pantalla.blit(txt_tag, (rect_caja.x + 35, rect_caja.y + 15))
 
-        txt_dialogo = fuente_llamada.render(lista_actual[indice_dialogo], True, (240, 245, 240))
-        pantalla.blit(txt_dialogo, (rect_caja.x + 20, rect_caja.y + 36))
+        for n_linea, linea in enumerate(partir_texto(lista_actual[indice_dialogo], fuente_llamada, rect_caja.width - 40)[:2]):
+            txt_dialogo = fuente_llamada.render(linea, True, (240, 245, 240))
+            pantalla.blit(txt_dialogo, (rect_caja.x + 20, rect_caja.y + 34 + n_linea * 21))
 
-        rect_mute = pygame.Rect(rect_caja.right + 15, 20, 140, 65)
+        rect_mute = pygame.Rect(rect_caja.right + 15, 20, 140, 82)
         pygame.draw.rect(pantalla, (120, 30, 30), rect_mute, border_radius=4)
         pygame.draw.rect(pantalla, (220, 60, 60), rect_mute, 2)
         txt_m1 = fuente_pequeña.render("[MUTE CALL]", True, (255, 255, 255))
-        pantalla.blit(txt_m1, (rect_mute.x + 25, rect_mute.y + 25))
+        pantalla.blit(txt_m1, (rect_mute.centerx - txt_m1.get_width() // 2, rect_mute.centery - txt_m1.get_height() // 2))
 
 def dibujar_menu_principal():
     pantalla.fill((8, 10, 12))
 
-    sp_menu = ASSETS.get("barnaby_oficina") or ASSETS.get("barnaby_cam")
+    sp_menu = sprite("barnaby_oficina") or sprite("barnaby_cam")
     if sp_menu:
         twitch_x = random.randint(-14, 14) if random.random() < 0.10 else 0
         twitch_y = random.randint(-8, 8) if random.random() < 0.10 else 0
         brillo_m = random.choice([30, 45, 150, 25]) if random.random() < 0.08 else 40
         dibujar_sprite_centrado(pantalla, sp_menu, 230 + twitch_x, 380 + twitch_y, 1.35, brillo_m)
-        if random.random() < 0.92:
-            pygame.draw.circle(pantalla, (160, 235, 255), (212 + twitch_x, 305 + twitch_y), 5)
-            pygame.draw.circle(pantalla, (160, 235, 255), (248 + twitch_x, 305 + twitch_y), 5)
 
     txt_t1 = fuente_titulo.render("FNAF: INDUSTRIAL SECTOR", True, (220, 230, 235))
     pantalla.blit(txt_t1, (400, 90))
@@ -1619,14 +1818,18 @@ def dibujar_menu_principal():
         pantalla.blit(txt_rec, (400 + estrellas * 55, 180))
 
     opciones = []
-    rect_nuevo = pygame.Rect(400, 220, 340, 55)
+    if evidencias:
+        txt_ev = fuente_cam.render(f"PRUEBAS ENCONTRADAS: {len(evidencias)}/4", True, (255, 210, 90))
+        pantalla.blit(txt_ev, (760, 180))
+
+    rect_nuevo = pygame.Rect(400, 215, 340, 55)
     pygame.draw.rect(pantalla, (18, 24, 28), rect_nuevo, border_radius=6)
     pygame.draw.rect(pantalla, (40, 160, 110), rect_nuevo, 2)
     txt_n = fuente_grande.render("NUEVO JUEGO", True, (255, 255, 255))
     pantalla.blit(txt_n, (rect_nuevo.x + 25, rect_nuevo.y + 12))
     opciones.append(("NUEVO", rect_nuevo, True))
 
-    rect_cont = pygame.Rect(400, 295, 340, 55)
+    rect_cont = pygame.Rect(400, 280, 340, 55)
     desbloq_cont = (noche_desbloqueada > 1)
     pygame.draw.rect(pantalla, (18, 24, 28) if desbloq_cont else (15, 18, 20), rect_cont, border_radius=6)
     pygame.draw.rect(pantalla, (40, 160, 220) if desbloq_cont else (45, 55, 60), rect_cont, 2)
@@ -1635,7 +1838,7 @@ def dibujar_menu_principal():
     pantalla.blit(txt_c, (rect_cont.x + 25, rect_cont.y + 12))
     opciones.append(("CONTINUAR", rect_cont, desbloq_cont))
 
-    rect_cust = pygame.Rect(400, 370, 340, 55)
+    rect_cust = pygame.Rect(400, 345, 340, 55)
     desbloq_cust = (noche_desbloqueada >= 5 or juego_completado_5_noches)
     pygame.draw.rect(pantalla, (25, 20, 18) if desbloq_cust else (15, 18, 20), rect_cust, border_radius=6)
     pygame.draw.rect(pantalla, (220, 100, 40) if desbloq_cust else (45, 55, 60), rect_cust, 2)
@@ -1644,7 +1847,22 @@ def dibujar_menu_principal():
     pantalla.blit(txt_cu, (rect_cust.x + 25, rect_cust.y + 12))
     opciones.append(("CUSTOM", rect_cust, desbloq_cust))
 
-    rect_salir = pygame.Rect(400, 445, 340, 50)
+    rect_archivo = pygame.Rect(400, 410, 340, 55)
+    desbloq_arch = cinta_disponible(1)
+    pygame.draw.rect(pantalla, (22, 20, 14) if desbloq_arch else (15, 18, 20), rect_archivo, border_radius=6)
+    pygame.draw.rect(pantalla, (200, 170, 70) if desbloq_arch else (45, 55, 60), rect_archivo, 2)
+    txt_ar = fuente_grande.render("ARCHIVO 1982", True, (255, 240, 200) if desbloq_arch else (90, 100, 105))
+    pantalla.blit(txt_ar, (rect_archivo.x + 25, rect_archivo.y + 12))
+    opciones.append(("ARCHIVO", rect_archivo, desbloq_arch))
+
+    rect_ajustes = pygame.Rect(400, 475, 340, 55)
+    pygame.draw.rect(pantalla, (18, 22, 28), rect_ajustes, border_radius=6)
+    pygame.draw.rect(pantalla, (110, 130, 150), rect_ajustes, 2)
+    txt_aj = fuente_grande.render("AJUSTES", True, (220, 230, 240))
+    pantalla.blit(txt_aj, (rect_ajustes.x + 25, rect_ajustes.y + 12))
+    opciones.append(("AJUSTES", rect_ajustes, True))
+
+    rect_salir = pygame.Rect(400, 540, 340, 50)
     pygame.draw.rect(pantalla, (20, 16, 16), rect_salir, border_radius=6)
     pygame.draw.rect(pantalla, (160, 40, 40), rect_salir, 2)
     txt_s = fuente_grande.render("SALIR", True, (240, 180, 180))
@@ -1714,80 +1932,335 @@ def dibujar_pantalla_victoria(t_transcurrido):
     pantalla.blit(txt_sub, (cx - txt_sub.get_width()//2, cy + 30))
 
 def dibujar_pantalla_periodico():
+    """Periódico del final. Usa periodico.png / periodico_verdadero.png si existen."""
+    final = final_actual or FINAL_NORMAL
+    p = final["periodico"]
+    verdadero = final is FINAL_VERDADERO
     pantalla.fill((12, 12, 14))
-
-    if ASSETS.get("periodico"):
-        img_per = pygame.transform.scale(ASSETS["periodico"], (ANCHO_VENTANA, ALTO_VENTANA))
-        pantalla.blit(img_per, (0, 0))
+    img = ASSETS.get("periodico_verdadero" if verdadero else "periodico")
+    if img:
+        pantalla.blit(img, (0, 0))
     else:
-        # Fondo papel envejecido/sepia
-        rect_hoja = pygame.Rect(180, 40, 840, 620)
+        rect_hoja = pygame.Rect(180, 30, 840, 630)
         pygame.draw.rect(pantalla, (215, 205, 185), rect_hoja)
         pygame.draw.rect(pantalla, (60, 50, 40), rect_hoja, 4)
-
-        # Encabezado del periódico
-        txt_cab = fuente_grande.render("THE INDUSTRIAL CHRONICLE", True, (25, 20, 15))
-        pantalla.blit(txt_cab, (rect_hoja.centerx - txt_cab.get_width() // 2, 60))
-
-        str_fecha = "OCTUBRE 23, 1982  //  EDICIÓN EXTRAORDINARIA  //  PRECIO: $0.25"
-        txt_f = fuente_cam.render(str_fecha, True, (70, 60, 50))
-        pantalla.blit(txt_f, (rect_hoja.centerx - txt_f.get_width() // 2, 100))
-
-        pygame.draw.line(pantalla, (40, 35, 30), (210, 120), (990, 120), 3)
-        pygame.draw.line(pantalla, (40, 35, 30), (210, 125), (990, 125), 1)
-
-        # Titular Principal
-        txt_tit1 = fuente_grande.render("PLANTA DE ENSAMBLAJE CLAUSURADA", True, (20, 15, 10))
-        txt_subt = fuente_media.render("LA GERENCIA SELLA LOS HORNOS Y DESMANTELA LAS LÍNEAS", True, (80, 30, 20))
-        pantalla.blit(txt_tit1, (rect_hoja.centerx - txt_tit1.get_width() // 2, 140))
-        pantalla.blit(txt_subt, (rect_hoja.centerx - txt_subt.get_width() // 2, 180))
-
-        # Marco de Foto de Prensa
-        rect_foto = pygame.Rect(230, 225, 300, 230)
+        _c = lambda txt, fnt, y, col: pantalla.blit(fnt.render(txt, True, col), (rect_hoja.centerx - fnt.size(txt)[0] // 2, y))
+        _c(p["cabecera"], fuente_grande, 48, (25, 20, 15))
+        _c(p["fecha"], fuente_cam, 90, (70, 60, 50))
+        pygame.draw.line(pantalla, (40, 35, 30), (210, 110), (990, 110), 3)
+        pygame.draw.line(pantalla, (40, 35, 30), (210, 115), (990, 115), 1)
+        _c(p["titular"], fuente_grande, 128, (20, 15, 10))
+        _c(p["bajada"], fuente_media, 170, (80, 30, 20))
+        rect_foto = pygame.Rect(230, 215, 300, 230)
         pygame.draw.rect(pantalla, (40, 38, 35), rect_foto)
         pygame.draw.rect(pantalla, (20, 18, 15), rect_foto, 3)
-
-        sp_foto = ASSETS.get("barnaby_cam") or ASSETS.get("bunny_cam")
-        if sp_foto:
-            dibujar_sprite_centrado(pantalla, sp_foto, rect_foto.centerx, rect_foto.centery, 0.48, 170)
+        if verdadero:
+            # Silueta de un hombre de traje entre dos policías
+            for dx, alto, color in ((-80, 150, (60, 58, 55)), (80, 150, (60, 58, 55)), (0, 165, (95, 90, 85))):
+                cx = rect_foto.centerx + dx
+                pygame.draw.circle(pantalla, color, (cx, rect_foto.bottom - alto), 20)
+                pygame.draw.rect(pantalla, color, (cx - 30, rect_foto.bottom - alto + 22, 60, alto - 22))
         else:
-            pygame.draw.circle(pantalla, (120, 115, 105), rect_foto.center, 55)
-
-        txt_pie = fuente_cam.render("Unidades mecánicas confinadas en el Sector B.", True, (60, 55, 50))
-        pantalla.blit(txt_pie, (230, 465))
-
-        # Columnas de Texto de Prensa
-        lineas_articulo = [
-            "Tras recurrentes anomalías nocturnas y severas",
-            "fallas en los circuitos neumáticos de los servos,",
-            "el Ministerio de Industria ordenó el cese total",
-            "de las operaciones de manufactura pesada.",
-            "",
-            "Los registros de audio archivados de 1982",
-            "fueron confiscados. La guardia nocturna queda",
-            "oficialmente disuelta a partir de las 6:00 AM.",
-            "",
-            "'No debimos alterar las matrices de aleación',",
-            "declaró un técnico bajo condición de anonimato.",
-            "Las compuertas y turbinas quedarán soldadas."
-        ]
-        for idx, lin in enumerate(lineas_articulo):
-            txt_col = fuente_pequeña.render(lin, True, (35, 30, 25))
-            pantalla.blit(txt_col, (560, 230 + (idx * 19)))
-
-        # Sello de Confidencial / Archivado
-        pygame.draw.rect(pantalla, (160, 40, 40), (620, 480, 290, 50), 3)
-        txt_sello = fuente_grande.render("CASO CERRADO", True, (160, 40, 40))
-        pantalla.blit(txt_sello, (640, 490))
+            sp_foto = sprite("barnaby_cam") or sprite("bunny_cam")
+            if sp_foto:
+                gris = sp_foto.copy()
+                gris.fill((150, 140, 125, 255), special_flags=pygame.BLEND_RGBA_MULT)
+                dibujar_sprite_centrado(pantalla, gris, rect_foto.centerx, rect_foto.centery, 0.42, 200)
+        pantalla.blit(fuente_cam.render(p["pie_foto"], True, (60, 55, 50)), (230, 455))
+        for idx, lin in enumerate(p["articulo"]):
+            pantalla.blit(fuente_pequeña.render(lin, True, (35, 30, 25)), (560, 220 + idx * 19))
+        color_sello = (40, 110, 50) if verdadero else (160, 40, 40)
+        txt_sello = fuente_grande.render(p["sello"], True, color_sello)
+        sello = pygame.Rect(0, 0, txt_sello.get_width() + 40, 56)
+        sello.center = (780, 560)
+        pygame.draw.rect(pantalla, color_sello, sello, 3)
+        pantalla.blit(txt_sello, (sello.x + 20, sello.y + 10))
 
     txt_cont = fuente_cam.render("[PULSA ESPACIO O HAZ CLIC PARA CONTINUAR]", True, (180, 190, 195))
     pantalla.blit(txt_cont, (ANCHO_VENTANA // 2 - txt_cont.get_width() // 2, ALTO_VENTANA - 25))
+
+RECT_BTN_REINTENTAR = pygame.Rect(ANCHO_VENTANA // 2 - 290, 520, 270, 55)
+RECT_BTN_MENU_MUERTE = pygame.Rect(ANCHO_VENTANA // 2 + 20, 520, 270, 55)
+captura_pausa = pygame.Surface((ANCHO_VENTANA, ALTO_VENTANA))
+
+def dibujar_boton_menu(rect, texto, color_borde, activo=True):
+    hover = rect.collidepoint(pygame.mouse.get_pos()) and activo
+    pygame.draw.rect(pantalla, (30, 36, 42) if hover else (18, 22, 26), rect, border_radius=6)
+    pygame.draw.rect(pantalla, color_borde if activo else (45, 55, 60), rect, 2, border_radius=6)
+    txt = fuente_media.render(texto, True, (255, 255, 255) if activo else (90, 100, 105))
+    pantalla.blit(txt, (rect.centerx - txt.get_width() // 2, rect.centery - txt.get_height() // 2))
+
+def dibujar_menu_pausa():
+    capa = pygame.Surface((ANCHO_VENTANA, ALTO_VENTANA), pygame.SRCALPHA)
+    capa.fill((0, 0, 0, 190))
+    pantalla.blit(capa, (0, 0))
+    txt = fuente_titulo.render("PAUSA", True, (220, 230, 235))
+    pantalla.blit(txt, (ANCHO_VENTANA // 2 - txt.get_width() // 2, 170))
+    sub = fuente_cam.render(f"NOCHE {noche_actual}  //  {hora} AM  //  [ESC] PARA CONTINUAR", True, (130, 160, 150))
+    pantalla.blit(sub, (ANCHO_VENTANA // 2 - sub.get_width() // 2, 230))
+    botones = []
+    for i, (clave, texto, color) in enumerate([("CONTINUAR", "CONTINUAR", (40, 160, 110)),
+                                               ("REINTENTAR", "REINICIAR NOCHE", (220, 140, 40)),
+                                               ("AJUSTES", "AJUSTES", (110, 130, 150)),
+                                               ("MENU", "MENÚ PRINCIPAL", (160, 40, 40))]):
+        rect = pygame.Rect(ANCHO_VENTANA // 2 - 170, 280 + i * 70, 340, 55)
+        dibujar_boton_menu(rect, texto, color)
+        botones.append((clave, rect))
+    return botones
+
+def dibujar_pantalla_muerte():
+    pantalla.fill((6, 4, 4))
+    img = ASSETS.get(f"jumpscare_{animatronico_atacante}")
+    if img:
+        cara = img.copy()
+        cara.fill((70, 45, 45), special_flags=pygame.BLEND_RGB_MULT)
+        dx = random.randint(-3, 3) if random.random() < 0.15 else 0
+        pantalla.blit(cara, ((ANCHO_VENTANA - cara.get_width()) // 2 + dx, (ALTO_VENTANA - cara.get_height()) // 2))
+    # Estática y franjas de interferencia
+    for _ in range(1400):
+        g = random.randint(30, 140)
+        pantalla.set_at((random.randrange(ANCHO_VENTANA), random.randrange(ALTO_VENTANA)), (g, g, g))
+    if random.random() < 0.3:
+        y = random.randrange(ALTO_VENTANA)
+        pantalla.fill((60, 20, 20), (0, y, ANCHO_VENTANA, random.randint(3, 14)), special_flags=pygame.BLEND_RGB_ADD)
+
+    txt_go = fuente_titulo.render("GAME OVER", True, (230, 40, 40))
+    pantalla.blit(txt_go, (ANCHO_VENTANA // 2 - txt_go.get_width() // 2, 150))
+    txt_res = fuente_media.render(mensaje_muerte, True, (255, 200, 200))
+    pantalla.blit(txt_res, (ANCHO_VENTANA // 2 - txt_res.get_width() // 2, 225))
+    txt_hora = fuente_pequeña.render(f"NOCHE {noche_actual}  //  RESISTISTE HASTA LAS {hora} AM", True, (170, 180, 185))
+    pantalla.blit(txt_hora, (ANCHO_VENTANA // 2 - txt_hora.get_width() // 2, 262))
+
+    dibujar_boton_menu(RECT_BTN_REINTENTAR, "[R] REINTENTAR NOCHE", (220, 140, 40))
+    dibujar_boton_menu(RECT_BTN_MENU_MUERTE, "[ESC] MENÚ PRINCIPAL", (160, 40, 40))
+
+# -------------------------------------------------------------
+# Menú de ajustes
+# -------------------------------------------------------------
+# (clave, texto, tipo, parámetros). tipo: "barra" (mín, máx, paso, sufijo), "si_no", "opciones" ([(valor, texto)...])
+OPCIONES_AJUSTES = [
+    ("vol_general", "VOLUMEN GENERAL", "barra", (0, 100, 5, "%")),
+    ("vol_efectos", "EFECTOS DE SONIDO", "barra", (0, 100, 5, "%")),
+    ("vol_musica", "MÚSICA Y AMBIENTE", "barra", (0, 100, 5, "%")),
+    ("vol_voces", "VOCES DE LAS LLAMADAS", "barra", (0, 100, 5, "%")),
+    ("brillo", "BRILLO", "barra", (50, 150, 5, "%")),
+    ("crt", "EFECTO MONITOR CRT", "si_no", None),
+    ("pantalla_completa", "PANTALLA COMPLETA  [F11]", "si_no", None),
+    ("escalado", "ESCALADO DE IMAGEN", "opciones", [("ajustar", "AJUSTAR (SIN DEFORMAR)"), ("estirar", "ESTIRAR (SIN BORDES)")]),
+    ("vel_giro", "VELOCIDAD DE GIRO EN LA OFICINA", "barra", (50, 200, 10, "%")),
+    ("mostrar_fps", "MOSTRAR FPS", "si_no", None),
+]
+AYUDA_AJUSTES = {
+    "escalado": "AJUSTAR mantiene la imagen sin deformar (puede dejar bordes negros). ESTIRAR llena toda la pantalla.",
+    "brillo": "Si la oficina se ve muy oscura en tu monitor, subilo un poco.",
+    "crt": "Líneas de monitor viejo y desplazamiento de color. Apagarlo mejora el rendimiento.",
+    "vel_giro": "Qué tan rápido gira la vista al llevar el mouse a los bordes de la oficina.",
+    "pantalla_completa": "También se cambia en cualquier momento con F11.",
+}
+Y_AJUSTES, ALTO_FILA_AJUSTES = 118, 44
+X_CONTROL, ANCHO_CONTROL = 640, 400
+
+def cambiar_ajuste(clave, direccion=1, valor=None):
+    """Cambia un ajuste (direccion = -1 / +1, o un valor exacto) y lo aplica al instante."""
+    global crt_activo
+    _, _, tipo, params = next(o for o in OPCIONES_AJUSTES if o[0] == clave)
+    if tipo == "barra":
+        mn, mx, paso, _ = params
+        nuevo = valor if valor is not None else AJUSTES[clave] + paso * direccion
+        AJUSTES[clave] = int(max(mn, min(mx, round(nuevo / paso) * paso)))
+    elif tipo == "si_no":
+        AJUSTES[clave] = not AJUSTES[clave]
+    else:
+        valores = [v for v, _ in params]
+        AJUSTES[clave] = valores[(valores.index(AJUSTES[clave]) + direccion) % len(valores)]
+    if clave == "crt":
+        crt_activo = AJUSTES["crt"]
+    if clave in ("pantalla_completa", "escalado"):
+        ventana.aplicar_modo()
+    if clave in ("vol_general", "vol_musica", "vol_voces"):
+        g = AJUSTES["vol_general"] / 100.0
+        CANAL_MUSICA.set_volume(g * AJUSTES["vol_musica"] / 100.0)
+        CANAL_AMBIENTE.set_volume(g * AJUSTES["vol_musica"] / 100.0)
+        CANAL_VOZ.set_volume(g * AJUSTES["vol_voces"] / 100.0)
+
+def controles_fila_ajuste(i):
+    y = Y_AJUSTES + i * ALTO_FILA_AJUSTES
+    fila = pygame.Rect(150, y, 900, ALTO_FILA_AJUSTES - 6)
+    menos = pygame.Rect(X_CONTROL, y + 4, 34, 30)
+    mas = pygame.Rect(X_CONTROL + ANCHO_CONTROL - 34, y + 4, 34, 30)
+    barra = pygame.Rect(menos.right + 12, y + 13, mas.left - menos.right - 24, 12)
+    return fila, menos, mas, barra
+
+RECT_AJ_RESTABLECER = pygame.Rect(ANCHO_VENTANA // 2 - 300, 600, 280, 50)
+RECT_AJ_VOLVER = pygame.Rect(ANCHO_VENTANA // 2 + 20, 600, 280, 50)
+
+def dibujar_menu_ajustes():
+    if ajustes_volver_a == "PAUSA":
+        pantalla.blit(captura_pausa, (0, 0))
+        capa = pygame.Surface((ANCHO_VENTANA, ALTO_VENTANA), pygame.SRCALPHA)
+        capa.fill((4, 6, 8, 225))
+        pantalla.blit(capa, (0, 0))
+    else:
+        pantalla.fill((8, 10, 12))
+    txt = fuente_titulo.render("AJUSTES", True, (220, 230, 235))
+    pantalla.blit(txt, (ANCHO_VENTANA // 2 - txt.get_width() // 2, 38))
+    sub = fuente_cam.render("[ARRIBA/ABAJO] ELEGIR   [IZQ/DER] CAMBIAR   [ESC] VOLVER   //   SE GUARDA SOLO", True, (110, 140, 130))
+    pantalla.blit(sub, (ANCHO_VENTANA // 2 - sub.get_width() // 2, 92))
+
+    pos = pygame.mouse.get_pos()
+    for i, (clave, texto, tipo, params) in enumerate(OPCIONES_AJUSTES):
+        fila, menos, mas, barra = controles_fila_ajuste(i)
+        elegida = (i == ajustes_seleccion)
+        if elegida:
+            pygame.draw.rect(pantalla, (22, 34, 32), fila, border_radius=5)
+            pygame.draw.rect(pantalla, (50, 120, 95), fila, 1, border_radius=5)
+        etiqueta = fuente_panel.render(texto, True, (235, 245, 240) if elegida else (165, 180, 175))
+        pantalla.blit(etiqueta, (fila.x + 20, fila.centery - etiqueta.get_height() // 2))
+
+        for rb, simbolo in ((menos, "<"), (mas, ">")):
+            hover = rb.collidepoint(pos)
+            pygame.draw.rect(pantalla, (40, 60, 56) if hover else (24, 30, 32), rb, border_radius=4)
+            pygame.draw.rect(pantalla, (80, 110, 100), rb, 1, border_radius=4)
+            s_txt = fuente_media.render(simbolo, True, (220, 235, 230))
+            pantalla.blit(s_txt, (rb.centerx - s_txt.get_width() // 2, rb.centery - s_txt.get_height() // 2))
+
+        valor = AJUSTES[clave]
+        if tipo == "barra":
+            mn, mx, _, sufijo = params
+            pygame.draw.rect(pantalla, (14, 18, 20), barra, border_radius=6)
+            lleno = barra.copy()
+            lleno.width = int(barra.width * (valor - mn) / (mx - mn))
+            pygame.draw.rect(pantalla, (40, 200, 130), lleno, border_radius=6)
+            pygame.draw.circle(pantalla, (230, 255, 240), (lleno.right, barra.centery), 9)
+            v_txt = fuente_cam.render(f"{valor}{sufijo}", True, (200, 220, 210))
+            pantalla.blit(v_txt, (barra.centerx - v_txt.get_width() // 2, barra.bottom + 3))
+        else:
+            if tipo == "si_no":
+                texto_valor, color = ("SÍ", (80, 230, 140)) if valor else ("NO", (230, 110, 100))
+            else:
+                texto_valor, color = dict(params)[valor], (240, 200, 110)
+            v_txt = fuente_pequeña.render(texto_valor, True, color)
+            pantalla.blit(v_txt, (barra.centerx - v_txt.get_width() // 2, barra.centery - v_txt.get_height() // 2))
+
+    clave_sel = OPCIONES_AJUSTES[ajustes_seleccion][0]
+    if clave_sel in AYUDA_AJUSTES:
+        ayuda = fuente_cam.render(AYUDA_AJUSTES[clave_sel], True, (140, 160, 150))
+        pantalla.blit(ayuda, (ANCHO_VENTANA // 2 - ayuda.get_width() // 2, 572))
+
+    dibujar_boton_menu(RECT_AJ_RESTABLECER, "RESTABLECER", (180, 120, 40))
+    dibujar_boton_menu(RECT_AJ_VOLVER, "[ESC] VOLVER", (40, 160, 110))
+
+def salir_de_ajustes():
+    global estado_actual
+    guardar_ajustes(AJUSTES)
+    reproducir_sonido(sfx_reboot_click)
+    estado_actual = ESTADO_JUEGO if ajustes_volver_a == "PAUSA" else ESTADO_MENU
+
+# -------------------------------------------------------------
+# Modo desarrollador (código secreto + atajos + panel de información)
+# -------------------------------------------------------------
+_buffer_codigo = ""
+dev_congelados = False       # F6: los animatrónicos no se mueven
+dev_panel = True             # F10: mostrar u ocultar el panel
+dev_aviso, dev_t_aviso = "", 0.0
+dev_jumpscare_idx = 0
+
+def dev_avisar(texto):
+    global dev_aviso, dev_t_aviso
+    dev_aviso, dev_t_aviso = texto, tiempo_juego() + 2.5
+    ventana.capa_extra = dibujar_capa_desarrollo
+
+def revisar_eventos_desarrollo(eventos):
+    """Se llama con todos los eventos del juego: detecta el código secreto y los atajos F4-F10."""
+    global _buffer_codigo, MODO_DESARROLLO, dev_congelados, dev_panel, dev_jumpscare_idx
+    global noche_desbloqueada, juego_completado_5_noches, evidencias, tiempo_inicio
+    for e in eventos:
+        if e.type != pygame.KEYDOWN:
+            continue
+        if e.unicode and e.unicode.isalnum():
+            _buffer_codigo = (_buffer_codigo + e.unicode.lower())[-len(CODIGO_DESARROLLO):]
+            if _buffer_codigo == CODIGO_DESARROLLO.lower():
+                _buffer_codigo = ""
+                MODO_DESARROLLO = not MODO_DESARROLLO
+                if not MODO_DESARROLLO:
+                    dev_congelados = False
+                reproducir_sonido(sfx_ir_lock)
+                dev_avisar("MODO DESARROLLADOR " + ("ACTIVADO" if MODO_DESARROLLO else "DESACTIVADO"))
+                continue
+        if not MODO_DESARROLLO:
+            continue
+        en_noche = estado_actual == ESTADO_JUEGO and not juego_terminado and not en_jumpscare and not pausado
+        if e.key == pygame.K_F4:
+            noche_desbloqueada, juego_completado_5_noches = 5, True
+            dev_avisar("NOCHES Y CINTAS DESBLOQUEADAS (SOLO ESTA SESIÓN)")
+        elif e.key == pygame.K_F5:
+            evidencias = set() if len(evidencias) == 4 else {1, 2, 3, 4}
+            dev_avisar(f"PRUEBAS: {len(evidencias)}/4 (SOLO ESTA SESIÓN)")
+        elif e.key == pygame.K_F6:
+            dev_congelados = not dev_congelados
+            dev_avisar("ANIMATRÓNICOS CONGELADOS" if dev_congelados else "ANIMATRÓNICOS ACTIVOS")
+        elif e.key == pygame.K_F7 and en_noche:
+            tiempo_inicio -= DURACION_HORA_SEGUNDOS
+            dev_avisar("+1 HORA")
+        elif e.key == pygame.K_F8 and en_noche:
+            nombre = ["Barnaby", "Silas", "Penny", "Rusty Bunny"][dev_jumpscare_idx % 4]
+            dev_jumpscare_idx += 1
+            iniciar_jumpscare(nombre, f"PRUEBA DE JUMPSCARE: {nombre.upper()}")
+        elif e.key == pygame.K_F9 and estado_actual == ESTADO_MINIJUEGO and minijuego_actual and minijuego_actual.fase == "juego":
+            minijuego_actual.prueba = True
+            minijuego_actual.ganar()
+            dev_avisar("CINTA GANADA (CON PRUEBA)")
+        elif e.key == pygame.K_F10:
+            dev_panel = not dev_panel
+            ventana.capa_extra = dibujar_capa_desarrollo
+    if MODO_DESARROLLO:
+        ventana.capa_extra = dibujar_capa_desarrollo
+
+def dibujar_capa_desarrollo(sup):
+    ahora_dev = tiempo_juego()
+    if not MODO_DESARROLLO and ahora_dev > dev_t_aviso:
+        ventana.capa_extra = None
+        return
+    f = fuente_cam
+    if MODO_DESARROLLO and dev_panel:
+        lineas = [("MODO DESARROLLADOR  //  escribe '" + CODIGO_DESARROLLO + "' para salir", (255, 90, 90)),
+                  ("F2 6 AM   F3 recargar   F4 desbloquear   F5 pruebas   F6 congelar", (220, 220, 220)),
+                  ("F7 +1 hora   F8 jumpscare   F9 ganar cinta   F10 ocultar panel", (220, 220, 220))]
+        if estado_actual == ESTADO_JUEGO:
+            lineas.append((f"NOCHE {noche_actual}  {hora} AM  //  BAT {bateria:.0f}%  OX {oxigeno:.0f}%  BOBINA {bobina_generador:.0f}%  IR {carga_ir:.0f}%", (120, 230, 160)))
+            for a in (barnaby, silas, penny, bunny):
+                estado_a = "CONGELADO" if dev_congelados else f"IA {a.nivel_ia}+{a.bonus_hora}"
+                lineas.append((f"{a.nombre.upper():12s} {a.sala():16s} {estado_a}", (160, 200, 230)))
+        elif estado_actual == ESTADO_MINIJUEGO and minijuego_actual:
+            lineas.append((f"CINTA {minijuego_numero}  fase: {minijuego_actual.fase}  pos: {int(minijuego_actual.px)},{int(minijuego_actual.py)}", (120, 230, 160)))
+        alto = 8 + 17 * len(lineas)
+        fondo = pygame.Surface((560, alto), pygame.SRCALPHA)
+        fondo.fill((0, 0, 0, 185))
+        sup.blit(fondo, (8, sup.get_height() - alto - 112))
+        for i, (texto, color) in enumerate(lineas):
+            sup.blit(f.render(texto, True, color), (14, sup.get_height() - alto - 108 + i * 17))
+    elif MODO_DESARROLLO:
+        sup.blit(f.render("DEV", True, (255, 90, 90)), (8, 8))
+    if ahora_dev < dev_t_aviso:
+        txt = fuente_media.render(dev_aviso, True, (255, 255, 255))
+        caja = pygame.Rect(0, 0, txt.get_width() + 30, txt.get_height() + 16)
+        caja.midtop = (sup.get_width() // 2, 120)
+        sup.fill((40, 8, 8), caja)
+        pygame.draw.rect(sup, (255, 80, 80), caja, 2)
+        sup.blit(txt, (caja.x + 15, caja.y + 8))
+
+ventana.al_recibir_eventos = revisar_eventos_desarrollo
+if MODO_DESARROLLO:
+    ventana.capa_extra = dibujar_capa_desarrollo
 
 # -------------------------------------------------------------
 # 17. Bucle Principal de Juego
 # -------------------------------------------------------------
 while True:
-    dt = reloj.tick(60) / 1000.0
+    dt = min(reloj.tick(60) / 1000.0, 0.1)
+    if not pausado:
+        reloj_juego += dt
+        actualizar_audio_continuo()
     mouse_pos = pygame.mouse.get_pos()
     mouse_click = pygame.mouse.get_pressed()
 
@@ -1799,16 +2272,25 @@ while True:
                 sys.exit()
             if evento.type == pygame.KEYDOWN and evento.key == pygame.K_F1:
                 crt_activo = not crt_activo
+                AJUSTES["crt"] = crt_activo
+            if evento.type == pygame.KEYDOWN and evento.key == pygame.K_F11:
+                alternar_pantalla_completa()
             if evento.type == pygame.MOUSEBUTTONDOWN and evento.button == 1:
                 for tipo, rect, habilitado in opciones_menu:
                     if rect.collidepoint(mouse_pos) and habilitado:
                         reproducir_sonido(sfx_linterna)
                         if tipo == "NUEVO":
-                            comenzar_noche(1)
+                            mostrar_relato(INTRO_JUEGO["titulo"], INTRO_JUEGO["lineas"], lambda: presentar_noche(1))
                         elif tipo == "CONTINUAR":
-                            comenzar_noche(noche_desbloqueada)
+                            presentar_noche(noche_desbloqueada)
+                        elif tipo == "ARCHIVO":
+                            estado_actual = ESTADO_ARCHIVO
                         elif tipo == "CUSTOM":
                             estado_actual = ESTADO_CUSTOM
+                        elif tipo == "AJUSTES":
+                            ajustes_volver_a = "MENU"
+                            ajustes_seleccion = 0
+                            estado_actual = ESTADO_AJUSTES
                         elif tipo == "SALIR":
                             pygame.quit()
                             sys.exit()
@@ -1825,6 +2307,9 @@ while True:
                 sys.exit()
             if evento.type == pygame.KEYDOWN and evento.key == pygame.K_F1:
                 crt_activo = not crt_activo
+                AJUSTES["crt"] = crt_activo
+            if evento.type == pygame.KEYDOWN and evento.key == pygame.K_F11:
+                alternar_pantalla_completa()
             if evento.type == pygame.MOUSEBUTTONDOWN and evento.button == 1:
                 if btn_volver.collidepoint(mouse_pos):
                     estado_actual = ESTADO_MENU
@@ -1833,21 +2318,11 @@ while True:
                 for nombre, r_menos, r_mas in controles_ia:
                     if r_menos.collidepoint(mouse_pos):
                         ia_custom[nombre] = max(0, ia_custom[nombre] - 1)
-                        guardar_partida({
-                            "noche_desbloqueada": noche_desbloqueada,
-                            "juego_completado_5_noches": juego_completado_5_noches,
-                            "ia_custom": ia_custom,
-                            "record_20_20_20_20": record_20_20_20_20
-                        })
+                        guardar_progreso()
                         reproducir_sonido(sfx_linterna)
                     elif r_mas.collidepoint(mouse_pos):
                         ia_custom[nombre] = min(20, ia_custom[nombre] + 1)
-                        guardar_partida({
-                            "noche_desbloqueada": noche_desbloqueada,
-                            "juego_completado_5_noches": juego_completado_5_noches,
-                            "ia_custom": ia_custom,
-                            "record_20_20_20_20": record_20_20_20_20
-                        })
+                        guardar_progreso()
                         reproducir_sonido(sfx_linterna)
 
         aplicar_postprocesado_crt(dt, intensidad_aberracion=1)
@@ -1855,7 +2330,7 @@ while True:
         continue
 
     elif estado_actual == ESTADO_VICTORIA:
-        t_transcurrido = time.time() - tiempo_inicio_6am
+        t_transcurrido = tiempo_juego() - tiempo_inicio_6am
         if t_transcurrido >= 0.2 and not campanas_tocadas[0]:
             reproducir_sonido(sfx_campana_1)
             campanas_tocadas[0] = True
@@ -1873,20 +2348,15 @@ while True:
                 sys.exit()
             if evento.type == pygame.KEYDOWN and evento.key in [pygame.K_SPACE, pygame.K_RETURN]:
                 if t_transcurrido >= 2.5:
-                    if noche_actual == 5:
-                        estado_actual = ESTADO_PERIODICO
-                        tiempo_inicio_periodico = time.time()
-                    elif isinstance(noche_actual, int) and noche_actual < 5:
-                        iniciar_minijuego(noche_actual)
-                    else:
-                        estado_actual = ESTADO_MENU
+                    t_transcurrido = 99   # Salta directo a lo que sigue (abajo)
 
         if t_transcurrido >= 3.6:
             if noche_actual == 5:
+                final_actual = FINAL_VERDADERO if len(evidencias) == 4 else FINAL_NORMAL
                 estado_actual = ESTADO_PERIODICO
-                tiempo_inicio_periodico = time.time()
+                tiempo_inicio_periodico = tiempo_juego()
             elif isinstance(noche_actual, int) and noche_actual < 5:
-                iniciar_minijuego(noche_actual)
+                iniciar_minijuego(noche_actual, "NOCHE")
             else:
                 estado_actual = ESTADO_MENU
 
@@ -1902,36 +2372,197 @@ while True:
                 sys.exit()
             if evento.type == pygame.KEYDOWN and evento.key == pygame.K_F1:
                 crt_activo = not crt_activo
+                AJUSTES["crt"] = crt_activo
+            if evento.type == pygame.KEYDOWN and evento.key == pygame.K_F11:
+                alternar_pantalla_completa()
             if (evento.type == pygame.MOUSEBUTTONDOWN and evento.button == 1) or (evento.type == pygame.KEYDOWN and evento.key in [pygame.K_SPACE, pygame.K_RETURN]):
-                if time.time() - tiempo_inicio_periodico >= 1.5:
-                    estado_actual = ESTADO_MENU
+                if tiempo_juego() - tiempo_inicio_periodico >= 1.5:
+                    color_final = (255, 210, 90) if final_actual is FINAL_VERDADERO else (220, 70, 70)
+                    mostrar_relato(final_actual["titulo"], final_actual["lineas"], ir_al_menu, color_final)
 
         aplicar_postprocesado_crt(dt, intensidad_aberracion=1)
         pygame.display.flip()
         continue
 
     elif estado_actual == ESTADO_MINIJUEGO:
-        for evento in pygame.event.get():
+        eventos_mj = pygame.event.get()
+        for evento in eventos_mj:
             if evento.type == pygame.QUIT:
                 pygame.quit()
                 sys.exit()
             if evento.type == pygame.KEYDOWN and evento.key == pygame.K_F1:
                 crt_activo = not crt_activo
+                AJUSTES["crt"] = crt_activo
+            if evento.type == pygame.KEYDOWN and evento.key == pygame.K_F11:
+                alternar_pantalla_completa()
 
-        actualizar_y_dibujar_minijuego(dt)
-        aberracion_mj = 4 if mj_evento_activado else 1
+        minijuego_actual.actualizar(dt, eventos_mj, pygame.key.get_pressed())
+        minijuego_actual.dibujar(pantalla)
+        if minijuego_actual.terminado:
+            if minijuego_actual.prueba and minijuego_numero not in evidencias:
+                evidencias.add(minijuego_numero)
+                guardar_progreso()
+            estado_actual = ESTADO_ARCHIVO if minijuego_origen == "ARCHIVO" else ESTADO_MENU
+        aberracion_mj = 3 if minijuego_actual.flash > 0 else 1
         aplicar_postprocesado_crt(dt, intensidad_aberracion=aberracion_mj)
         pygame.display.flip()
         continue
 
+    elif estado_actual == ESTADO_RELATO:
+        eventos_r = pygame.event.get()
+        for evento in eventos_r:
+            if evento.type == pygame.QUIT:
+                pygame.quit()
+                sys.exit()
+            if evento.type == pygame.KEYDOWN and evento.key == pygame.K_F11:
+                alternar_pantalla_completa()
+        relato_actual.actualizar(dt, eventos_r)
+        relato_actual.dibujar(pantalla)
+        if relato_actual.terminado:
+            relato_despues()
+        aplicar_postprocesado_crt(dt, intensidad_aberracion=1)
+        pygame.display.flip()
+        continue
+
+    elif estado_actual == ESTADO_TITULO_NOCHE:
+        dibujar_titulo_noche()
+        saltar = False
+        for evento in pygame.event.get():
+            if evento.type == pygame.QUIT:
+                pygame.quit()
+                sys.exit()
+            if (evento.type == pygame.KEYDOWN and evento.key not in (pygame.K_F1, pygame.K_F11)) or (evento.type == pygame.MOUSEBUTTONDOWN and evento.button == 1):
+                saltar = tiempo_juego() - t_titulo_noche > 0.4
+        if saltar or tiempo_juego() - t_titulo_noche >= 3.4:
+            comenzar_noche(noche_a_presentar)
+        aplicar_postprocesado_crt(dt, intensidad_aberracion=1)
+        pygame.display.flip()
+        continue
+
+    elif estado_actual == ESTADO_ARCHIVO:
+        dibujar_archivo()
+        for evento in pygame.event.get():
+            if evento.type == pygame.QUIT:
+                pygame.quit()
+                sys.exit()
+            if evento.type == pygame.KEYDOWN and evento.key == pygame.K_ESCAPE:
+                estado_actual = ESTADO_MENU
+            if evento.type == pygame.MOUSEBUTTONDOWN and evento.button == 1:
+                if RECT_ARCHIVO_VOLVER.collidepoint(evento.pos):
+                    reproducir_sonido(sfx_linterna)
+                    estado_actual = ESTADO_MENU
+                for n, rect in zip((1, 2, 3, 4), botones_archivo()):
+                    if rect.collidepoint(evento.pos) and cinta_disponible(n):
+                        reproducir_sonido(sfx_linterna)
+                        iniciar_minijuego(n, "ARCHIVO")
+        aplicar_postprocesado_crt(dt, intensidad_aberracion=1)
+        pygame.display.flip()
+        continue
+
+    elif estado_actual == ESTADO_AJUSTES:
+        dibujar_menu_ajustes()
+        for evento in pygame.event.get():
+            if evento.type == pygame.QUIT:
+                guardar_ajustes(AJUSTES)
+                pygame.quit()
+                sys.exit()
+            if evento.type == pygame.KEYDOWN:
+                if evento.key in (pygame.K_ESCAPE, pygame.K_BACKSPACE):
+                    salir_de_ajustes()
+                elif evento.key in (pygame.K_UP, pygame.K_w):
+                    ajustes_seleccion = (ajustes_seleccion - 1) % len(OPCIONES_AJUSTES)
+                elif evento.key in (pygame.K_DOWN, pygame.K_s):
+                    ajustes_seleccion = (ajustes_seleccion + 1) % len(OPCIONES_AJUSTES)
+                elif evento.key in (pygame.K_LEFT, pygame.K_a, pygame.K_RIGHT, pygame.K_d, pygame.K_RETURN, pygame.K_SPACE):
+                    d = -1 if evento.key in (pygame.K_LEFT, pygame.K_a) else 1
+                    cambiar_ajuste(OPCIONES_AJUSTES[ajustes_seleccion][0], d)
+                    reproducir_sonido(sfx_linterna)
+                elif evento.key == pygame.K_F11:
+                    cambiar_ajuste("pantalla_completa")
+            if evento.type == pygame.MOUSEBUTTONDOWN and evento.button == 1:
+                if RECT_AJ_VOLVER.collidepoint(evento.pos):
+                    salir_de_ajustes()
+                elif RECT_AJ_RESTABLECER.collidepoint(evento.pos):
+                    for k, v in AJUSTES_POR_DEFECTO.items():
+                        if AJUSTES[k] != v:
+                            AJUSTES[k] = v
+                    crt_activo = AJUSTES["crt"]
+                    ventana.aplicar_modo()
+                    reproducir_sonido(sfx_reboot_click)
+                for i, (clave, _, tipo, params) in enumerate(OPCIONES_AJUSTES):
+                    fila, menos, mas, barra = controles_fila_ajuste(i)
+                    if not fila.collidepoint(evento.pos):
+                        continue
+                    ajustes_seleccion = i
+                    if menos.collidepoint(evento.pos):
+                        cambiar_ajuste(clave, -1)
+                    elif mas.collidepoint(evento.pos):
+                        cambiar_ajuste(clave, 1)
+                    elif tipo != "barra" and evento.pos[0] >= X_CONTROL:
+                        cambiar_ajuste(clave, 1)
+                    reproducir_sonido(sfx_linterna)
+            if evento.type == pygame.MOUSEMOTION:
+                for i in range(len(OPCIONES_AJUSTES)):
+                    if controles_fila_ajuste(i)[0].collidepoint(evento.pos):
+                        ajustes_seleccion = i
+        # Arrastrar las barras con el mouse
+        if mouse_click[0]:
+            for i, (clave, _, tipo, params) in enumerate(OPCIONES_AJUSTES):
+                if tipo != "barra":
+                    continue
+                barra = controles_fila_ajuste(i)[3]
+                if barra.inflate(16, 22).collidepoint(mouse_pos):
+                    mn, mx, _, _ = params
+                    t = max(0.0, min(1.0, (mouse_pos[0] - barra.x) / barra.width))
+                    cambiar_ajuste(clave, valor=mn + t * (mx - mn))
+        if estado_actual == ESTADO_AJUSTES:
+            aplicar_postprocesado_crt(dt, intensidad_aberracion=1)
+        pygame.display.flip()
+        continue
+
     # JUGANDO (Turno Activo)
+    if pausado:
+        pantalla.blit(captura_pausa, (0, 0))
+        botones_pausa = dibujar_menu_pausa()
+        for evento in pygame.event.get():
+            if evento.type == pygame.QUIT:
+                pygame.quit()
+                sys.exit()
+            accion = None
+            if evento.type == pygame.KEYDOWN and evento.key in [pygame.K_ESCAPE, pygame.K_p]:
+                accion = "CONTINUAR"
+            if evento.type == pygame.MOUSEBUTTONDOWN and evento.button == 1:
+                for nombre_b, rect_b in botones_pausa:
+                    if rect_b.collidepoint(evento.pos):
+                        accion = nombre_b
+            if accion == "AJUSTES":
+                reproducir_sonido(sfx_reboot_click)
+                ajustes_volver_a = "PAUSA"
+                ajustes_seleccion = 0
+                estado_actual = ESTADO_AJUSTES
+                break
+            if accion:
+                pausado = False
+                pygame.mixer.unpause()
+                reproducir_sonido(sfx_reboot_click)
+                if accion == "REINTENTAR":
+                    comenzar_noche(noche_actual)
+                elif accion == "MENU":
+                    pygame.mixer.stop()
+                    estado_actual = ESTADO_MENU
+        if estado_actual == ESTADO_JUEGO:
+            pygame.display.flip()
+        continue
+
     rect_toggle_camara = pygame.Rect(ANCHO_VENTANA//2 - 200, ALTO_VENTANA - 45, 400, 35)
     btn_modo_rect = pygame.Rect(840, 345, 330, 36)
     btn_lure_rect = pygame.Rect(840, 305, 330, 32)
-    rect_btn_bobina = pygame.Rect(120, 185, 240, 34)
+    rect_btn_bobina = RECT_BTN_BOBINA
 
     if lure_cooldown > 0:
         lure_cooldown = max(0.0, lure_cooldown - dt)
+    if trampa_cooldown > 0:
+        trampa_cooldown = max(0.0, trampa_cooldown - dt)
 
     if monitor_abierto and progreso_monitor < 1.0:
         progreso_monitor = min(1.0, progreso_monitor + (dt / DURACION_TRANSICION_MONITOR))
@@ -1948,18 +2579,19 @@ while True:
             bobina_generador = min(100.0, bobina_generador + 24.0 * dt)
             reproducir_sonido(sfx_bobina_cuerda, 0.4, 0.4)
         else:
-            drenaje_bobina = 2.2 if noche_actual in [1, 2] else (3.2 if noche_actual in [3, 4] else 4.2)
+            # La bobina se presenta en la llamada de la noche 3: antes no se descarga
+            drenaje_bobina = 0.0 if noche_actual in [1, 2] else (3.2 if noche_actual in [3, 4] else 4.2)
             bobina_generador = max(0.0, bobina_generador - drenaje_bobina * dt)
 
         if bobina_generador <= 0.0:
             if not apagon_bobina_activo:
                 apagon_bobina_activo = True
-                tiempo_inicio_apagon_bobina = time.time()
+                tiempo_inicio_apagon_bobina = tiempo_juego()
                 reproducir_sonido(sfx_apagon_down)
         else:
             apagon_bobina_activo = False
 
-        if time.time() >= tiempo_siguiente_fallo:
+        if tiempo_juego() >= tiempo_siguiente_fallo:
             fallo_elegido = random.choice(["VENT", "CAM"])
             if fallo_elegido == "VENT" and not error_ventilacion:
                 error_ventilacion = True
@@ -1967,10 +2599,10 @@ while True:
             elif fallo_elegido == "CAM" and not error_camaras:
                 error_camaras = True
                 reproducir_sonido(sfx_alarma_error)
-            tiempo_siguiente_fallo = time.time() + random.uniform(25.0, 50.0)
+            tiempo_siguiente_fallo = tiempo_juego() + random.uniform(25.0, 50.0)
 
     if reboot_activo and not en_apagon:
-        if time.time() - reboot_tiempo_inicio >= DURACION_REBOOT:
+        if tiempo_juego() - reboot_tiempo_inicio >= DURACION_REBOOT:
             if reboot_activo in ["VENT", "ALL"]:
                 error_ventilacion = False
             if reboot_activo in ["CAM", "ALL"]:
@@ -1980,7 +2612,7 @@ while True:
 
     lista_dialogos_actual = DIALOGOS_NOCHES.get(noche_actual, DIALOGOS_NOCHES[1])
     if llamada_activa and not llamada_muteada and not en_apagon:
-        ahora = time.time()
+        ahora = tiempo_juego()
         if indice_dialogo == 0 and ahora - tiempo_repique >= 2.2:
             reproducir_sonido(sfx_timbre)
             tiempo_repique = ahora
@@ -1997,6 +2629,16 @@ while True:
 
         if evento.type == pygame.KEYDOWN and evento.key == pygame.K_F1:
             crt_activo = not crt_activo
+            AJUSTES["crt"] = crt_activo
+
+        if evento.type == pygame.KEYDOWN and evento.key == pygame.K_F11:
+            alternar_pantalla_completa()
+
+        if evento.type == pygame.KEYDOWN and evento.key in [pygame.K_ESCAPE, pygame.K_p] and not juego_terminado and not en_jumpscare:
+            pausado = True
+            captura_pausa = pantalla.copy()
+            pygame.mixer.pause()
+            continue
 
         if not juego_terminado and not en_jumpscare and not en_apagon:
             if evento.type == pygame.KEYDOWN:
@@ -2009,7 +2651,7 @@ while True:
                         monitor_abierto = not monitor_abierto
                         reproducir_sonido(sfx_monitor_movimiento)
                         reproducir_sonido(sfx_estatica_cctv)
-                    if monitor_abierto and evento.key == pygame.K_v:
+                    if monitor_abierto and evento.key == pygame.K_v and not ir_agotado:
                         vision_nocturna_cam = not vision_nocturna_cam
                         reproducir_sonido(sfx_linterna)
                     if not monitor_abierto:
@@ -2029,23 +2671,24 @@ while True:
                     btn_rv, btn_rc, btn_rall, btn_close = dibujar_panel_mantenimiento()
                     if btn_rv.collidepoint(mouse_pos) and not reboot_activo:
                         reboot_activo = "VENT"
-                        reboot_tiempo_inicio = time.time()
+                        reboot_tiempo_inicio = tiempo_juego()
                         reproducir_sonido(sfx_reboot_click)
                     elif btn_rc.collidepoint(mouse_pos) and not reboot_activo:
                         reboot_activo = "CAM"
-                        reboot_tiempo_inicio = time.time()
+                        reboot_tiempo_inicio = tiempo_juego()
                         reproducir_sonido(sfx_reboot_click)
                     elif btn_rall.collidepoint(mouse_pos) and not reboot_activo:
                         reboot_activo = "ALL"
-                        reboot_tiempo_inicio = time.time()
+                        reboot_tiempo_inicio = tiempo_juego()
                         reproducir_sonido(sfx_reboot_click)
                     elif btn_close.collidepoint(mouse_pos):
                         panel_mantenimiento_abierto = False
                         reproducir_sonido(sfx_reboot_click)
                 else:
-                    rect_mute_btn = pygame.Rect(775, 20, 140, 65)
+                    rect_mute_btn = pygame.Rect(775, 20, 140, 82)
                     if llamada_activa and not llamada_muteada and rect_mute_btn.collidepoint(mouse_pos):
                         llamada_muteada = True
+                        CANAL_VOZ.stop()
                         reproducir_sonido(sfx_timbre)
 
                     if rect_toggle_camara.collidepoint(mouse_pos) and not mirando_techo:
@@ -2062,11 +2705,11 @@ while True:
                         if modo_ventilacion and btn_lure_rect.collidepoint(mouse_pos) and lure_cooldown <= 0.0:
                             lure_cooldown = 10.0
                             reproducir_sonido(sfx_lure_audio, 0.7, 0.7)
-                            if silas.nodo_actual in [1, 2, 3]:
+                            if silas.sala().startswith("VENT"):
                                 silas.nodo_actual = max(1, silas.nodo_actual - 1)
                                 reproducir_sonido(sfx_conducto_metal, 0.6, 0.6)
 
-                        if evento.button == 3 and not modo_ventilacion and (100 <= mouse_pos[0] <= 820 and 80 <= mouse_pos[1] <= 560):
+                        if evento.button == 3 and not modo_ventilacion and not ir_agotado and (100 <= mouse_pos[0] <= 820 and 80 <= mouse_pos[1] <= 560):
                             vision_nocturna_cam = not vision_nocturna_cam
                             reproducir_sonido(sfx_linterna)
 
@@ -2077,37 +2720,58 @@ while True:
                                     camara_seleccionada = cam_id
                                     reproducir_sonido(sfx_estatica_cctv)
                                 elif evento.button == 3 and modo_ventilacion:
-                                    trampa_ducto = cam_id
-                                    reproducir_sonido(sfx_puerta)
+                                    if trampa_ducto == cam_id:
+                                        trampa_ducto = None  # Reabrir la compuerta manualmente
+                                        reproducir_sonido(sfx_puerta)
+                                    elif trampa_ducto is None and trampa_cooldown <= 0.0:
+                                        trampa_ducto = cam_id
+                                        reproducir_sonido(sfx_puerta)
                     elif not mirando_techo and progreso_monitor <= 0.2:
                         x_of = mouse_pos[0] + cam_x
                         y_of = mouse_pos[1]
                         if 480 <= x_of <= 545 and 360 <= y_of <= 445:
                             panel_mantenimiento_abierto = True
                             reproducir_sonido(sfx_reboot_click)
-                        if 40 <= x_of <= 90 and 470 <= y_of <= 520:
+                        if RECT_BTN_PUERTA_IZQ.collidepoint(x_of, y_of):
                             puerta_izq_cerrada = not puerta_izq_cerrada
                             reproducir_sonido(sfx_puerta, 0.9, 0.2)
-                        if 40 <= x_of <= 90 and 545 <= y_of <= 595:
+                        if RECT_BTN_LUZ_IZQ.collidepoint(x_of, y_of):
                             luz_izq = not luz_izq
                             reproducir_sonido(sfx_linterna, 0.9, 0.2)
-                        if 1630 <= x_of <= 1680 and 460 <= y_of <= 510:
+                        if RECT_BTN_PERSIANA.collidepoint(x_of, y_of):
                             if not persiana_der_sostenida:
-                                tiempo_inicio_persiana = time.time()
+                                tiempo_inicio_persiana = tiempo_juego()
                                 reproducir_sonido(sfx_persiana, 0.2, 0.9)
                             persiana_der_sostenida = True
-                        if 1630 <= x_of <= 1680 and 535 <= y_of <= 585:
+                        if RECT_BTN_LUZ_DER.collidepoint(x_of, y_of):
                             luz_der = not luz_der
                             reproducir_sonido(sfx_linterna, 0.2, 0.9)
 
-        elif juego_terminado and evento.type == pygame.MOUSEBUTTONDOWN:
-            estado_actual = ESTADO_MENU
+        elif juego_terminado:
+            accion = None
+            if evento.type == pygame.KEYDOWN:
+                if evento.key in [pygame.K_r, pygame.K_SPACE, pygame.K_RETURN]:
+                    accion = "REINTENTAR"
+                elif evento.key == pygame.K_ESCAPE:
+                    accion = "MENU"
+            if evento.type == pygame.MOUSEBUTTONDOWN and evento.button == 1:
+                if RECT_BTN_REINTENTAR.collidepoint(evento.pos):
+                    accion = "REINTENTAR"
+                elif RECT_BTN_MENU_MUERTE.collidepoint(evento.pos):
+                    accion = "MENU"
+            if accion == "REINTENTAR":
+                reproducir_sonido(sfx_linterna)
+                comenzar_noche(noche_actual)
+            elif accion == "MENU":
+                reproducir_sonido(sfx_linterna)
+                estado_actual = ESTADO_MENU
 
     if en_jumpscare:
-        tiempo_transcurrido = time.time() - tiempo_inicio_jumpscare
+        tiempo_transcurrido = tiempo_juego() - tiempo_inicio_jumpscare
         progreso = min(1.0, tiempo_transcurrido / DURACION_JUMPSCARE)
-        shake_x = random.randint(int(-intensidad_shake), int(intensidad_shake))
-        shake_y = random.randint(int(-intensidad_shake), int(intensidad_shake))
+        amp_shake = max(1, int(intensidad_shake * (1.0 - progreso)))
+        shake_x = random.randint(-amp_shake, amp_shake)
+        shake_y = random.randint(-amp_shake, amp_shake)
         dibujar_jumpscare(progreso)
         pantalla.blit(pantalla.copy(), (shake_x, shake_y))
         if progreso >= 1.0:
@@ -2118,6 +2782,13 @@ while True:
         pygame.display.flip()
         continue
 
+    if juego_terminado:
+        if estado_actual == ESTADO_JUEGO:
+            dibujar_pantalla_muerte()
+            aplicar_postprocesado_crt(dt, intensidad_aberracion=2)
+            pygame.display.flip()
+        continue
+
     if monitor_abierto and progreso_monitor >= 0.8 and not modo_ventilacion and camara_seleccionada == "CAM_08":
         bobina_cargando = mouse_click[0] and rect_btn_bobina.collidepoint(mouse_pos)
     else:
@@ -2126,9 +2797,9 @@ while True:
     if not monitor_abierto and not mirando_techo and not panel_mantenimiento_abierto and not en_apagon and mouse_click[0] and progreso_monitor <= 0.2:
         x_of = mouse_pos[0] + cam_x
         y_of = mouse_pos[1]
-        if 1630 <= x_of <= 1680 and 460 <= y_of <= 510:
+        if RECT_BTN_PERSIANA.collidepoint(x_of, y_of):
             if not persiana_der_sostenida:
-                tiempo_inicio_persiana = time.time()
+                tiempo_inicio_persiana = tiempo_juego()
                 reproducir_sonido(sfx_persiana, 0.2, 0.9)
             persiana_der_sostenida = True
         else:
@@ -2140,6 +2811,34 @@ while True:
 
     if glitch_cam_timer > 0:
         glitch_cam_timer = max(0.0, glitch_cam_timer - dt)
+
+    # Carga de la visión nocturna IR
+    if monitor_abierto and vision_nocturna_cam and not error_camaras:
+        carga_ir = max(0.0, carga_ir - DESCARGA_IR * dt)
+        if carga_ir <= 0.0:
+            vision_nocturna_cam = False
+            ir_agotado = True
+            reproducir_sonido(sfx_alarma_error, 0.5, 0.5)
+    else:
+        carga_ir = min(100.0, carga_ir + RECARGA_IR * dt)
+        if ir_agotado and carga_ir >= 40.0:
+            ir_agotado = False
+            reproducir_sonido(sfx_reboot_click)
+
+    # Pistas de sonido: se escucha dónde está cada uno aunque no lo mires
+    if not juego_terminado and not en_jumpscare and not en_apagon:
+        ahora_cue = tiempo_juego()
+        pistas = []
+        if penny.sala() == "PUERTA_IZQ" and not puerta_izq_cerrada:
+            pistas.append(("penny", 2.6, sfx_respiracion, 0.45, 0.05))
+        if silas.sala() == "REJILLA_OFICINA":
+            pistas.append(("silas", 1.7, sfx_golpe_techo, 0.5, 0.5))
+        if bunny.sala() == "VENTANA_DER" and progreso_persiana < 0.85:
+            pistas.append(("bunny", 2.1, sfx_golpe_vidrio, 0.05, 0.5))
+        for clave_p, cada, sfx_p, vi, vd in pistas:
+            if ahora_cue - ultimo_aviso_sonoro.get(clave_p, -99) >= cada:
+                ultimo_aviso_sonoro[clave_p] = ahora_cue
+                reproducir_sonido(sfx_p, vi, vd)
 
     teclas = pygame.key.get_pressed()
     intento_linterna = not monitor_abierto and not mirando_techo and not panel_mantenimiento_abierto and not en_apagon and progreso_monitor <= 0.2 and (mouse_click[2] or teclas[pygame.K_f])
@@ -2168,16 +2867,16 @@ while True:
     barras_uso = min(5, barras_uso)
 
     if monitor_abierto and progreso_monitor >= 0.8 and vision_nocturna_cam and not error_camaras and not en_apagon:
-        if time.time() - tiempo_ultimo_hum_ir >= 0.38:
+        if tiempo_juego() - tiempo_ultimo_hum_ir >= 0.38:
             reproducir_sonido(sfx_ir_hum, 0.25, 0.25)
-            tiempo_ultimo_hum_ir = time.time()
+            tiempo_ultimo_hum_ir = tiempo_juego()
 
     if not juego_terminado:
         if not monitor_abierto and not mirando_techo and not persiana_der_sostenida and not panel_mantenimiento_abierto and progreso_monitor <= 0.2:
             if mouse_pos[0] < 150:
-                cam_x -= 650 * dt
+                cam_x -= 650 * AJUSTES["vel_giro"] / 100.0 * dt
             elif mouse_pos[0] > ANCHO_VENTANA - 150:
-                cam_x += 650 * dt
+                cam_x += 650 * AJUSTES["vel_giro"] / 100.0 * dt
             cam_x = max(0, min(cam_x, ANCHO_OFICINA - ANCHO_VENTANA))
 
         if not en_apagon:
@@ -2185,8 +2884,8 @@ while True:
             if bateria <= 0:
                 bateria = 0
                 en_apagon = True
-                tiempo_inicio_apagon = time.time()
-                tiempo_ultima_nota_apagon = time.time()
+                tiempo_inicio_apagon = tiempo_juego()
+                tiempo_ultima_nota_apagon = tiempo_juego()
                 monitor_abierto = False
                 progreso_monitor = 0.0
                 panel_mantenimiento_abierto = False
@@ -2199,10 +2898,10 @@ while True:
                 luz_der = False
                 reproducir_sonido(sfx_apagon_down)
         else:
-            t_ap = time.time() - tiempo_inicio_apagon
+            t_ap = tiempo_juego() - tiempo_inicio_apagon
             if 2.5 < t_ap < 12.0:
-                if time.time() - tiempo_ultima_nota_apagon >= 0.75:
-                    tiempo_ultima_nota_apagon = time.time()
+                if tiempo_juego() - tiempo_ultima_nota_apagon >= 0.75:
+                    tiempo_ultima_nota_apagon = tiempo_juego()
                     nota = NOTAS_CAJA_MUSICA[indice_nota_apagon % len(NOTAS_CAJA_MUSICA)]
                     reproducir_sonido(nota, 0.5, 0.5)
                     indice_nota_apagon += 1
@@ -2225,22 +2924,26 @@ while True:
             penny.actualizar()
             bunny.actualizar()
 
-            if silas.nodo_actual == 2 and trampa_ducto == "VENT_02":
-                silas.nodo_actual = 0
+            # Compuerta de ducto: funciona en cualquier ducto. Si Silas está en el ducto
+            # cerrado, vuelve al inicio, la compuerta se reabre y hay que esperar para rearmarla.
+            if trampa_ducto and silas.sala() == trampa_ducto:
+                silas.volver_al_inicio()
+                trampa_ducto = None
+                trampa_cooldown = COOLDOWN_TRAMPA
                 reproducir_sonido(sfx_conducto_metal, 0.5, 0.5)
 
             if linterna_pasillo and barnaby.nodo_actual in [2, 3]:
                 progreso_cegado_barnaby += dt
                 if progreso_cegado_barnaby >= 1.4:
-                    barnaby.nodo_actual = 0
+                    barnaby.volver_al_inicio()
                     progreso_cegado_barnaby = 0.0
                     reproducir_sonido(sfx_paso_metal, 0.5, 0.5)
             else:
                 progreso_cegado_barnaby = max(0.0, progreso_cegado_barnaby - 0.8 * dt)
 
             if bunny.nodo_actual == 4:
-                if persiana_der_sostenida and progreso_persiana >= 0.85 and (time.time() - tiempo_inicio_persiana >= 2.0):
-                    bunny.nodo_actual = 0
+                if persiana_der_sostenida and progreso_persiana >= 0.85 and (tiempo_juego() - tiempo_inicio_persiana >= 2.0):
+                    bunny.volver_al_inicio()
                     bunny.tiempo_en_ataque = 0.0
                     reproducir_sonido(sfx_paso_metal, 0.1, 0.9)
                 else:
@@ -2250,7 +2953,7 @@ while True:
 
             if penny.nodo_actual == 3:
                 if puerta_izq_cerrada:
-                    penny.nodo_actual = 0
+                    penny.volver_al_inicio()
                     penny.tiempo_en_ataque = 0.0
                     reproducir_sonido(sfx_paso_metal, 0.9, 0.1)
                 else:
@@ -2260,22 +2963,27 @@ while True:
 
             if barnaby.nodo_actual == 4:
                 iniciar_jumpscare("Barnaby", "BARNABY TE ALCANZÓ EN EL ESCRITORIO")
-            elif silas.nodo_actual == 5:
+            elif silas.sala() == "OFICINA":
                 if not ventilacion_sellada:
                     iniciar_jumpscare("Silas", "SILAS CAYÓ DE LA VENTILACIÓN SUPERIOR")
                 else:
-                    silas.nodo_actual = 0
+                    silas.volver_al_inicio()
             elif penny.nodo_actual == 4:
                 iniciar_jumpscare("Penny", "PENNY ENTRÓ POR LA PUERTA IZQUIERDA")
             elif bunny.nodo_actual == 5:
                 iniciar_jumpscare("Rusty Bunny", "RUSTY BUNNY DESTRUYÓ EL CRISTAL DE LA VENTANA")
 
-        segundos_pasados = time.time() - tiempo_inicio
+        segundos_pasados = tiempo_juego() - tiempo_inicio
         hora = 12 + int(segundos_pasados // DURACION_HORA_SEGUNDOS)
         if hora > 12: hora -= 12
 
+        # Más agresivos a las 2, 3 y 4 AM (solo en las noches de la historia)
+        bonus = 0 if noche_actual == "CUSTOM" else {2: 1, 3: 2, 4: 3, 5: 3}.get(hora, 0)
+        for a in (barnaby, silas, penny, bunny):
+            a.bonus_hora = bonus
+
         if segundos_pasados >= DURACION_HORA_SEGUNDOS * 6:
-            tiempo_inicio_6am = time.time()
+            tiempo_inicio_6am = tiempo_juego()
             campanas_tocadas = [False, False, False]
             if isinstance(noche_actual, int) and noche_actual == noche_desbloqueada and noche_desbloqueada < 5:
                 noche_desbloqueada += 1
@@ -2283,12 +2991,7 @@ while True:
                 juego_completado_5_noches = True
             if noche_actual == "CUSTOM" and all(v == 20 for v in ia_custom.values()):
                 record_20_20_20_20 = True
-            guardar_partida({
-                "noche_desbloqueada": noche_desbloqueada,
-                "juego_completado_5_noches": juego_completado_5_noches,
-                "ia_custom": ia_custom,
-                "record_20_20_20_20": record_20_20_20_20
-            })
+            guardar_progreso()
             estado_actual = ESTADO_VICTORIA
 
     if panel_mantenimiento_abierto:
@@ -2323,7 +3026,7 @@ while True:
         pygame.draw.rect(overlay_asfixia, (0, 0, 0, alpha_tunel), (0, 0, ANCHO_VENTANA, ALTO_VENTANA), grosor_tunel)
         pygame.draw.circle(overlay_asfixia, (0, 0, 0, 0), (ANCHO_VENTANA // 2, ALTO_VENTANA // 2), max(120, int(420 * (1.0 - factor_peligro))))
 
-        if error_ventilacion and int(time.time() * 3) % 2 == 0:
+        if error_ventilacion and int(tiempo_juego() * 3) % 2 == 0:
             overlay_asfixia.fill((70, 0, 0, 50), special_flags=pygame.BLEND_RGBA_ADD)
 
         pantalla.blit(overlay_asfixia, (0, 0))
@@ -2340,7 +3043,7 @@ while True:
         pantalla.blit(txt_hora, (ANCHO_VENTANA - 130, 25))
         pantalla.blit(txt_tag_noche, (ANCHO_VENTANA - 130, 60))
 
-        if (error_ventilacion or error_camaras or apagon_bobina_activo) and int(time.time() * 3) % 2 == 0:
+        if (error_ventilacion or error_camaras or apagon_bobina_activo) and int(tiempo_juego() * 3) % 2 == 0:
             msg_hud = "[!] GENERADOR CAM_08 VACÍO" if apagon_bobina_activo else "[!] ERROR DE SISTEMA - PULSA [M]"
             txt_err_hud = fuente_pequeña.render(msg_hud, True, (255, 60, 60))
             pantalla.blit(txt_err_hud, (ANCHO_VENTANA - 270, 95))
@@ -2366,37 +3069,23 @@ while True:
         txt_cal = fuente_pequeña.render(f"BULBO LINTERNA: {estado_lin}", True, col_calor)
         pantalla.blit(txt_cal, (30, ALTO_VENTANA - 20))
 
-    if juego_terminado:
-        overlay = pygame.Surface((ANCHO_VENTANA, ALTO_VENTANA), pygame.SRCALPHA)
-        overlay.fill((0, 0, 0, 230))
-        pantalla.blit(overlay, (0, 0))
-        txt_res = fuente_grande.render(mensaje_muerte, True, (255, 50, 50))
-        txt_sub_go = fuente_pequeña.render("Haz clic en cualquier lugar para regresar al menú principal", True, (180, 180, 190))
-        pantalla.blit(txt_res, (ANCHO_VENTANA//2 - txt_res.get_width()//2, ALTO_VENTANA//2 - 25))
-        pantalla.blit(txt_sub_go, (ANCHO_VENTANA//2 - txt_sub_go.get_width()//2, ALTO_VENTANA//2 + 25))
-
     # Easter Eggs Alucinaciones VHS
     if not juego_terminado and not en_jumpscare and random.random() < 0.0008:
         overlay_aluc = pygame.Surface((ANCHO_VENTANA, ALTO_VENTANA))
         overlay_aluc.fill((8, 4, 4))
-        frases_lore = [
-            "ELLOS NOS ENSAMBLARON",
-            "INCIDENTE 1982 // ARCHIVO BORRADO",
-            "NO MIRES EL CONDUCTO",
-            "IT'S ME // SECTOR INDUSTRIAL"
-        ]
+        frases_lore = FRASES_ALUCINACION
         txt_aluc = fuente_titulo.render(random.choice(frases_lore), True, (220, 30, 30))
         overlay_aluc.blit(txt_aluc, (ANCHO_VENTANA//2 - txt_aluc.get_width()//2, ALTO_VENTANA//2 - 30))
-        sp_aluc = ASSETS.get("barnaby_oficina") or ASSETS.get("silas_techo")
+        sp_aluc = sprite("barnaby_oficina") or sprite("silas_techo")
         if sp_aluc:
             dibujar_sprite_centrado(overlay_aluc, sp_aluc, ANCHO_VENTANA//2, ALTO_VENTANA//2, 1.3, 120)
         pantalla.blit(overlay_aluc, (0, 0))
         reproducir_sonido(sfx_glitch_8bit, 0.7, 0.7)
 
     # Atajos de Desarrollador F2 y F3
-    if teclas[pygame.K_F2] and not juego_terminado:
-        tiempo_inicio = time.time() - (DURACION_HORA_SEGUNDOS * 6)
-    if teclas[pygame.K_F3] and not juego_terminado:
+    if MODO_DESARROLLO and teclas[pygame.K_F2] and not juego_terminado:
+        tiempo_inicio = tiempo_juego() - (DURACION_HORA_SEGUNDOS * 6)
+    if MODO_DESARROLLO and teclas[pygame.K_F3] and not juego_terminado:
         bateria = 100.0
         oxigeno = 100.0
         bobina_generador = 100.0

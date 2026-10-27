@@ -2,10 +2,11 @@
     "noche_desbloqueada": 5,
     "juego_completado_5_noches": true,
     "ia_custom": {
-        "Barnaby": 20,
-        "Silas": 20,
-        "Penny": 20,
-        "Rusty Bunny": 20
+        "Barnaby": 10,
+        "Silas": 10,
+        "Penny": 10,
+        "Rusty Bunny": 10
     },
-    "record_20_20_20_20": true
+    "record_20_20_20_20": false,
+    "evidencias": []
 }
