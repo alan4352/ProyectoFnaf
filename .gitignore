@@ -1,0 +1,12 @@
+# Entorno y compilación
+venv/
+build/
+dist/
+*.spec
+__pycache__/
+*.pyc
+
+# Progreso de cada jugador (no se sube)
+save_data.json
+save.json
+ajustes.json

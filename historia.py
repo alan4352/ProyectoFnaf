@@ -275,3 +275,99 @@ FRASES_ALUCINACION = [
     "¿POR QUÉ NO ABRIERON?",
     "03-MAR-1982 // 03:15 AM",
 ]
+
+# -------------------------------------------------------------
+# NOCHE 6 (secreta: se desbloquea con el final verdadero)
+# -------------------------------------------------------------
+# La Unidad 0 fue el primer prototipo con matriz M-82. La calibró el propio Varela,
+# para mostrarle a los dueños cómo "aprendía". Quedó guardada en el sótano.
+# Copió lo único que Varela hacía de noche: recorrer la planta mirando las cámaras.
+# Si nadie la está mirando a ella, se acerca.
+TITULOS_NOCHE[6] = "SÁBADO 30 DE OCTUBRE, 1982 // NOCHE EXTRA"
+
+DIALOGOS_NOCHES[6] = [
+    "--- TRANSMISIÓN ENTRANTE: FISCALÍA, DIVISIÓN DELITOS INDUSTRIALES ---",
+    "Habla el inspector Ledesma. Gracias por aceptar una noche más. La planta se demuele el lunes.",
+    "Necesitamos que alguien custodie el sector hasta que retiremos las pruebas. Solo esta noche.",
+    "Revisando el inventario encontramos algo en el sótano: una 'Unidad 0'. El primer prototipo.",
+    "Según los papeles, la calibró Varela en persona. Para la demostración a los dueños.",
+    "Las otras unidades siguen encendidas. No sabemos por qué. Ni por qué la Unidad 0 ya no está en el sótano.",
+    "Un técnico dijo algo raro: que la Unidad 0 'solo se mueve cuando nadie la mira'.",
+    "Si la encuentras en las cámaras, no le quites los ojos de encima. Y si llega al pasillo, mírala hasta que retroceda.",
+    "Suerte. Lo digo en serio.",
+]
+
+FINAL_NOCHE6 = {
+    "titulo": "HORAS EXTRA",
+    "lineas": [
+        "6:00 AM. El sol entró por la ventana del Sector B.",
+        "",
+        "La Unidad 0 estaba de pie en el pasillo, mirando hacia la oficina.",
+        "Inmóvil. Como alguien que espera que le den permiso para irse.",
+        "",
+        "El lunes, las excavadoras derribaron la planta Dunmore.",
+        "En el sótano encontraron una silla frente a cuatro monitores apagados.",
+        "",
+        "Ya no queda nadie de turno.",
+    ],
+}
+
+# -------------------------------------------------------------
+# Secretos
+# -------------------------------------------------------------
+# Llamada equivocada: muy rara vez reemplaza la llamada de las noches 2 a 5.
+LLAMADA_EQUIVOCADA = [
+    "--- TRANSMISIÓN ENTRANTE: ORIGEN DESCONOCIDO ---",
+    "...¿hola? ¿Walter? ¿Sos vos? Se escucha muy mal...",
+    "...la puerta de calderas no abre. Probé con la llave y no entra...",
+    "...hace mucho calor acá, Walter. Mucho calor...",
+    "...si ves a Varela decile que abra. Decile que todavía estamos acá...",
+    "--- [LÍNEA CORTADA] ---",
+]
+
+# Cinta secreta: se reproduce al escribir 0303 en el menú (la pista está en la oficina).
+CINTA_SECRETA = {
+    "titulo": "CINTA 0 // 02-MAR-1982 // 23:40 // GRABADORA PERSONAL DE E. VARELA",
+    "lineas": [
+        "'Nota para mí mismo. Mañana llega el pedido de Holloway Parks.'",
+        "'Si no sale a tiempo, los dueños cierran el Sector B y me quedo sin planta.'",
+        "'Los del turno noche se están llevando herramientas. Voy a cambiar los candados.'",
+        "'Las salidas de emergencia también. Que nadie salga hasta terminar el pedido.'",
+        "'Los hornos no se apagan. Que la caldera aguante una noche más.'",
+        "'...Una noche más. Qué podría salir mal.'",
+        "",
+        "--- FIN DE LA CINTA ---",
+    ],
+}
+
+# -------------------------------------------------------------
+# Créditos (se muestran al terminar el juego)
+# -------------------------------------------------------------
+CREDITOS = [
+    ("FNAF: INDUSTRIAL SECTOR (1982)", "titulo"),
+    ("", ""),
+    ("IDEA, DISEÑO Y DIRECCIÓN", "seccion"),
+    ("alan4352", "nombre"),
+    ("", ""),
+    ("PROGRAMACIÓN", "seccion"),
+    ("alan4352", "nombre"),
+    ("", ""),
+    ("ARTE Y SPRITES", "seccion"),
+    ("alan4352", "nombre"),
+    ("", ""),
+    ("HISTORIA", "seccion"),
+    ("Ensambladora Dunmore S.A. y el turno noche del 3 de marzo de 1982", "nombre"),
+    ("", ""),
+    ("EN MEMORIA DE", "seccion"),
+    ("Walter Ibarra  //  Marta Peña  //  Rubén Ortiz  //  Tomás Silva", "nombre"),
+    ("(personajes de ficción)", "nota"),
+    ("", ""),
+    ("HECHO CON", "seccion"),
+    ("Python y Pygame", "nombre"),
+    ("", ""),
+    ("Inspirado en Five Nights at Freddy's, de Scott Cawthon.", "nota"),
+    ("Este es un juego de fans sin fines de lucro.", "nota"),
+    ("", ""),
+    ("", ""),
+    ("GRACIAS POR JUGAR", "titulo"),
+]

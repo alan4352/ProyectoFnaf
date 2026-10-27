@@ -14,7 +14,18 @@ Después de cada noche (1 a 4) se reproduce una **cinta de 1982**: un minijuego 
 noche del accidente desde los ojos de uno de los operarios. En cada cinta hay una **prueba escondida**.
 Con las cuatro pruebas, el final cambia. Las cintas se pueden repetir desde **ARCHIVO 1982** en el menú.
 
-Todos los textos de la historia están en `historia.py` (llamadas, cintas, pruebas y finales).
+Todos los textos de la historia están en `historia.py` (llamadas, cintas, pruebas y finales) y su
+traducción al inglés en `historia_en.py`.
+
+## Contenido
+
+- **5 noches** con llamadas que cuentan la historia, y una **noche 6 secreta** (se desbloquea con el final
+  verdadero) con un enemigo nuevo: la **Unidad 0**, que solo se mueve cuando nadie la mira.
+- **4 cintas de 1982** (minijuegos de 8 bits) con una prueba escondida cada una y **dos finales**.
+- **Custom Night** con IA de 0 a 20 y **5 desafíos** con reglas especiales.
+- **18 logros** (algunos secretos) y **estadísticas** de toda la partida, con un resumen y créditos al terminar.
+- **Tutorial** guiado en la noche 1, **dificultad** Historia / Normal / Pesadilla e idioma **español / inglés**.
+- Algunos **secretos** raros... (una pista: mira bien la pared de la oficina).
 
 ## Cómo jugar
 
@@ -23,8 +34,12 @@ pip install pygame
 python fnaf_fabrica.py
 ```
 
-Para crear el `.exe`, ejecutá `compilar.bat` (necesita un entorno virtual `venv` con pygame y pyinstaller).
-El `.exe` queda en `dist\FNAF_Industrial.exe` y el progreso se guarda en `save_data.json`, junto al `.exe`.
+Para crear el `.exe`, hacé doble clic en `compilar.bat`: crea el entorno, instala lo necesario
+(`requirements.txt`) y compila. El `.exe` queda en `dist\FNAF_Industrial.exe` (con el ícono del juego) y el
+progreso se guarda en `save_data.json` y `ajustes.json`, junto al `.exe`.
+
+Para publicarlo (itch.io o GitHub), seguí `publicacion/PUBLICAR.md`; el texto para la página está en
+`publicacion/PAGINA_ITCH.md` y las capturas en `publicacion/capturas/`.
 
 ## Controles
 
@@ -58,6 +73,9 @@ El `.exe` queda en `dist\FNAF_Industrial.exe` y el progreso se guarda en `save_d
 
 A las 2, 3 y 4 AM se vuelven más agresivos.
 
+**Unidad 0** (noche 6): recorre cuatro cámaras y avanza cuando pasa mucho tiempo sin que la mires.
+Cuando llega al pasillo (CAM_07), mírala fijo unos segundos para que retroceda.
+
 ## Archivos del proyecto
 
 | Archivo | Qué tiene |
@@ -71,6 +89,11 @@ A las 2, 3 y 4 AM se vuelven más agresivos.
 | `guardado.py` | Guardado del progreso |
 | `efectos.py` | Efecto de monitor CRT |
 | `ventana.py` | Ventana, pantalla completa, escalado (ajustar/estirar), brillo y FPS |
+| `historia_en.py` | La historia traducida al inglés |
+| `idioma.py` | Traducción de la interfaz al inglés (diccionario de textos) |
+| `progreso.py` | Estadísticas y logros |
+| `unidad0.py` | El enemigo de la noche 6 |
+| `datos.py` | También: niveles de dificultad y desafíos de la Custom Night |
 
 ### Modo desarrollador
 
@@ -81,15 +104,16 @@ Aparece un panel con información de la partida y estos atajos:
 |---|---|
 | `F2` | Saltar a las 6 AM |
 | `F3` | Recargar batería, oxígeno y bobina |
-| `F4` | Desbloquear todas las noches y cintas (solo esa sesión) |
+| `F4` | Desbloquear todas las noches (incluida la 6) y las cintas (solo esa sesión) |
 | `F5` | Dar o quitar las 4 pruebas (solo esa sesión) |
 | `F6` | Congelar a los animatrónicos |
 | `F7` | Adelantar una hora |
-| `F8` | Probar un jumpscare (va rotando entre los cuatro) |
+| `F8` | Probar un jumpscare (va rotando entre los cinco) |
 | `F9` | Ganar la cinta actual con su prueba |
 | `F10` | Ocultar o mostrar el panel |
 
 La palabra se cambia en `CODIGO_DESARROLLO`, al principio de `fnaf_fabrica.py`.
+Con el modo desarrollador activo no se ganan logros (las estadísticas sí se cuentan).
 
 ## Ajustes
 
@@ -118,6 +142,7 @@ Si falta un archivo, el juego usa un dibujo o sonido generado por código.
 | `vent_01` … `vent_04` | *Opcional:* una imagen distinta por ducto | 720 × 538 |
 | `vent_bloqueada` | *Opcional:* ducto con la compuerta cerrada | 720 × 538 |
 | `jumpscare_barnaby`, `_silas`, `_penny`, `_bunny` | Jumpscares | 1380 × 1030 |
+| `icono` | Ícono de la ventana (el `.exe` usa `icono.ico`, en la carpeta principal) | 256 × 256 |
 | `periodico` | *Opcional:* periódico del final normal | 1200 × 700 |
 | `periodico_verdadero` | *Opcional:* periódico del final verdadero | 1200 × 700 |
 | `barnaby_cam`, `barnaby_oficina`, `silas_vent`, `silas_techo`, `penny_cam`, `penny_puerta`, `bunny_cam`, `bunny_ventana` | Sprites con fondo transparente (`.png`) | — |
