@@ -95,8 +95,9 @@ def _centrado(pantalla, fuente, texto, y, color):
 # -------------------------------------------------------------
 class Relato:
     """Pantalla negra con título y texto a máquina. Termina al apretar una tecla."""
-    def __init__(self, ctx, titulo, lineas, color_titulo=(90, 220, 140)):
+    def __init__(self, ctx, titulo, lineas, color_titulo=(90, 220, 140), fondo=None):
         self.ctx = ctx
+        self.fondo = fondo          # Imagen más ancha que la pantalla: se recorre de lado a lado
         self.titulo = titulo
         self.color_titulo = color_titulo
         self.maquina = MaquinaDeEscribir(lineas, velocidad=48.0)
@@ -115,6 +116,14 @@ class Relato:
     def dibujar(self, pantalla):
         f = self.ctx["fuentes"]
         pantalla.fill((5, 6, 7))
+        if self.fondo:
+            sobrante = max(0, self.fondo.get_width() - pantalla.get_width())
+            fase = (math.sin(self.t * 0.12 - math.pi / 2) + 1) / 2      # Va y vuelve despacio
+            pantalla.blit(self.fondo, (-int(sobrante * fase), 0))
+            # Franja oscura detrás del texto
+            capa = pygame.Surface((960, 380), pygame.SRCALPHA)
+            capa.fill((0, 0, 0, 120))
+            pantalla.blit(capa, (pantalla.get_width() // 2 - 480, 120))
         _centrado(pantalla, f["pequeña"], self.titulo, 70, self.color_titulo)
         y = 140
         for linea in self.maquina.lineas_visibles():

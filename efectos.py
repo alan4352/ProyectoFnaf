@@ -50,3 +50,46 @@ def aplicar_crt(pantalla, intensidad_aberracion=1):
 
     pantalla.blit(_capas_crt["scan"], (0, 0))
     pantalla.blit(_capas_crt["vin"], (0, 0))
+
+
+# -------------------------------------------------------------
+# Efectos animados generados por código (no necesitan imágenes)
+# -------------------------------------------------------------
+import random as _random
+
+
+def cortes_glitch(sup, cantidad=8, amplitud=40, rect=None):
+    """Corta franjas horizontales de la imagen y las corre de lugar (señal rota)."""
+    zona = rect or sup.get_rect()
+    for _ in range(cantidad):
+        alto = _random.randint(3, 34)
+        y = _random.randint(zona.top, max(zona.top, zona.bottom - alto))
+        franja = sup.subsurface((zona.x, y, zona.w, alto)).copy()
+        dx = _random.randint(-amplitud, amplitud)
+        sup.blit(franja, (zona.x + dx, y))
+        if _random.random() < 0.3:
+            sup.fill(_random.choice([(40, 0, 0), (0, 30, 40), (30, 30, 30)]), (zona.x, y, zona.w, alto),
+                     special_flags=pygame.BLEND_RGB_ADD)
+
+
+def separar_rgb(sup, desplazamiento=8):
+    """Separa los canales de color: el rojo se corre a un lado y el cian al otro."""
+    rojo = sup.copy()
+    rojo.fill((255, 0, 0), special_flags=pygame.BLEND_RGB_MULT)
+    sup.fill((0, 255, 255), special_flags=pygame.BLEND_RGB_MULT)
+    sup.blit(rojo, (desplazamiento, _random.randint(-2, 2)), special_flags=pygame.BLEND_RGB_ADD)
+
+
+def linea_tracking(sup, t, rect, velocidad=55.0):
+    """Banda de 'tracking' de VHS que baja lentamente por la imagen."""
+    alto_banda = 26
+    recorrido = rect.h + alto_banda * 2
+    y = rect.top - alto_banda + int((t * velocidad) % recorrido)
+    for k in range(0, alto_banda, 2):
+        fy = y + k
+        if rect.top <= fy < rect.bottom - 2:
+            dx = int(_random.randint(-6, 6) * (1 - abs(k - alto_banda / 2) / (alto_banda / 2)))
+            franja = sup.subsurface((rect.x, fy, rect.w, 2)).copy()
+            sup.blit(franja, (rect.x + dx, fy))
+            if k % 6 == 0:
+                sup.fill((22, 24, 22), (rect.x, fy, rect.w, 1), special_flags=pygame.BLEND_RGB_ADD)

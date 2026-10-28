@@ -10,7 +10,7 @@ from recursos import *      # rutas y carga de imágenes/sonidos
 from audio import *         # sonidos sintéticos y reales
 from guardado import *      # save_data.json
 from datos import *         # dificultad, diálogos, cámaras, rutas
-from efectos import aplicar_crt
+from efectos import aplicar_crt, cortes_glitch, separar_rgb, linea_tracking
 from historia import *      # textos de la historia: llamadas, cintas, finales
 from minijuegos import crear_minijuego, Relato
 from progreso import Progreso, LOGROS, NOMBRES_LOGROS, formato_tiempo
@@ -893,6 +893,22 @@ def texto_tiempo_infinito(segundos):
     horas = int(segundos // DURACION_HORA_SEGUNDOS)
     return f"{horas} H  ({formato_tiempo(segundos)})"
 
+# Parpadeo de la luz de la oficina: más seguido a medida que avanza la noche y baja la batería
+parpadeo_luz_hasta = 0.0
+parpadeo_luz_proximo = 0.0
+
+def dibujar_parpadeo_luz():
+    global parpadeo_luz_hasta, parpadeo_luz_proximo
+    ahora_p = tiempo_juego()
+    if ahora_p >= parpadeo_luz_proximo:
+        horas_noche = (ahora_p - tiempo_inicio) / DURACION_HORA_SEGUNDOS
+        espera = max(4.0, 22.0 - horas_noche * 2.5 - (100 - bateria) * 0.08)
+        parpadeo_luz_proximo = ahora_p + random.uniform(espera * 0.6, espera * 1.4)
+        parpadeo_luz_hasta = ahora_p + random.uniform(0.15, 0.45)
+    if ahora_p < parpadeo_luz_hasta and int(ahora_p * 28) % 3 != 0:
+        nivel = random.choice([70, 110, 150])
+        pantalla.fill((nivel, nivel, nivel), special_flags=pygame.BLEND_RGB_MULT)
+
 # Subtítulos de sonidos (accesibilidad): texto, lado (-1 izquierda, 0 centro, 1 derecha), hasta cuándo
 subtitulos_activos = []
 
@@ -1075,9 +1091,18 @@ def iniciar_minijuego(numero, origen="NOCHE"):
     minijuego_actual = crear_minijuego(numero, CTX_MINIJUEGOS)
     estado_actual = ESTADO_MINIJUEGO
 
-def mostrar_relato(titulo, lineas, despues, color=(90, 220, 140)):
+def fondo_relato_oficina():
+    """La oficina, muy oscura, para que el texto de la introducción se lea encima."""
+    img = ASSETS.get("oficina_base")
+    if not img:
+        return None
+    fondo = img.copy()
+    fondo.fill((34, 36, 38), special_flags=pygame.BLEND_RGB_MULT)
+    return fondo
+
+def mostrar_relato(titulo, lineas, despues, color=(90, 220, 140), fondo=None):
     global estado_actual, relato_actual, relato_despues
-    relato_actual = Relato(CTX_MINIJUEGOS, titulo, lineas, color)
+    relato_actual = Relato(CTX_MINIJUEGOS, titulo, lineas, color, fondo)
     relato_despues = despues
     estado_actual = ESTADO_RELATO
 
@@ -1912,6 +1937,10 @@ def dibujar_sistema_camaras():
             txt_mov = fuente_grande.render("[INTERFERENCIA DE MOVIMIENTO]", True, (255, 90, 90))
             pantalla_camaras.blit(txt_mov, (460 - txt_mov.get_width() // 2, 295))
 
+    # Banda de tracking de VHS que recorre la imagen
+    if not error_camaras and camara_seleccionada != "CAM_03":
+        linea_tracking(pantalla_camaras, tiempo_juego(), rect_pantalla_cctv)
+
     # Ruido estático analógico dentro del marco
     densidad = 1800 if error_camaras or camara_seleccionada == "CAM_03" else 450
     for _ in range(densidad):
@@ -2007,6 +2036,11 @@ def dibujar_jumpscare(progreso):
         if random.random() < 0.12:
             frame.fill((90, 90, 90), special_flags=pygame.BLEND_RGB_MULT)
         pantalla.blit(frame, (cx - w // 2, cy - h // 2))
+        # Señal rota: franjas corridas y colores separados (más fuerte al principio)
+        if random.random() < (0.55 if progreso < 0.35 else 0.2):
+            cortes_glitch(pantalla, random.randint(4, 10), int(60 * (1.2 - progreso)))
+        if random.random() < (0.45 if progreso < 0.35 else 0.15):
+            separar_rgb(pantalla, random.choice([-1, 1]) * random.randint(6, 16))
         # Fundido a negro al final
         if progreso > 0.8:
             negro = pygame.Surface((ANCHO_VENTANA, ALTO_VENTANA))
@@ -2015,6 +2049,8 @@ def dibujar_jumpscare(progreso):
         return
     escala = 1.0 + (progreso * 1.8)
     pygame.draw.circle(pantalla, (220, 40, 40), (cx, cy), int(100 * escala))
+    if random.random() < 0.4:
+        cortes_glitch(pantalla, 6, 50)
 
     for _ in range(450):
         rx = random.randint(0, ANCHO_VENTANA)
@@ -2062,8 +2098,43 @@ def dibujar_panel_llamada():
         txt_m1 = fuente_pequeña.render("[MUTE CALL]", True, (255, 255, 255))
         pantalla.blit(txt_m1, (rect_mute.centerx - txt_m1.get_width() // 2, rect_mute.centery - txt_m1.get_height() // 2))
 
+# Fondo del menú: las cámaras de la planta van pasando, oscurecidas, con estática entre una y otra
+_fondos_menu = []
+
+def dibujar_fondo_menu():
+    if not _fondos_menu:
+        for i in range(1, 9):
+            img = ASSETS.get(f"cam_0{i}")
+            if img:
+                fondo = escalar_cubriendo(img, ANCHO_VENTANA, ALTO_VENTANA).copy()
+                fondo.fill((64, 70, 68), special_flags=pygame.BLEND_RGB_MULT)
+                _fondos_menu.append((f"CAM_0{i}", fondo))
+        if not _fondos_menu:
+            _fondos_menu.append(("", None))
+    t = tiempo_juego()
+    duracion = 7.0
+    indice = int(t // duracion) % len(_fondos_menu)
+    etiqueta, fondo = _fondos_menu[indice]
+    if fondo is None:
+        pantalla.fill((8, 10, 12))
+        return
+    # Paneo lento, como una cámara que gira
+    fase = (t % duracion) / duracion
+    pantalla.blit(fondo, (int(-12 + 24 * fase), 0))
+    linea_tracking(pantalla, t, pantalla.get_rect(), velocidad=40.0)
+    if t % duracion < 0.35 or t % duracion > duracion - 0.1:
+        pantalla.fill((10, 12, 12))
+        for _ in range(2500):
+            g = random.randint(30, 150)
+            pantalla.set_at((random.randrange(ANCHO_VENTANA), random.randrange(ALTO_VENTANA)), (g, g, g))
+    else:
+        txt = fuente_cam.render(etiqueta, True, (150, 170, 160))
+        pantalla.blit(txt, (ANCHO_VENTANA - txt.get_width() - 20, 18))
+        if int(t * 2) % 2 == 0:
+            pygame.draw.circle(pantalla, (200, 40, 40), (ANCHO_VENTANA - txt.get_width() - 34, 25), 5)
+
 def dibujar_menu_principal():
-    pantalla.fill((8, 10, 12))
+    dibujar_fondo_menu()
 
     sp_menu = sprite("barnaby_oficina") or sprite("barnaby_cam")
     if sp_menu:
@@ -2843,7 +2914,7 @@ while True:
                         reproducir_sonido(sfx_linterna)
                         if tipo == "NUEVO":
                             progreso.stats["muertes_partida"] = 0
-                            mostrar_relato(INTRO_JUEGO["titulo"], INTRO_JUEGO["lineas"], lambda: presentar_noche(1))
+                            mostrar_relato(INTRO_JUEGO["titulo"], INTRO_JUEGO["lineas"], lambda: presentar_noche(1), fondo=fondo_relato_oficina())
                         elif tipo == "NOCHE6":
                             presentar_noche(6)
                         elif tipo == "EXTRAS":
@@ -3738,6 +3809,7 @@ while True:
     else:
         dibujar_oficina()
         pantalla.blit(superficie_oficina, (0, 0), (int(cam_x), 0, ANCHO_VENTANA, ALTO_VENTANA))
+        dibujar_parpadeo_luz()
 
         if progreso_monitor > 0.0:
             dibujar_sistema_camaras()
