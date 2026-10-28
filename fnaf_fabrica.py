@@ -44,7 +44,10 @@ MODO_DESARROLLO = False
 CODIGO_DESARROLLO = "dunmore"
 VERSION = "1.1"
 pygame.init()
-pygame.mixer.init(frequency=44100, size=-16, channels=2, buffer=512)
+try:
+    pygame.mixer.init(frequency=44100, size=-16, channels=2, buffer=512)
+except pygame.error:
+    pygame.mixer.init()   # Algunos celulares no aceptan ese formato: se usa el que tengan
 pygame.mixer.set_num_channels(24)
 pygame.mixer.set_reserved(3)
 CANAL_AMBIENTE = pygame.mixer.Channel(0)   # Zumbido de fábrica en bucle durante la noche
@@ -84,8 +87,11 @@ pantalla_camaras = pygame.Surface((ANCHO_VENTANA, ALTO_VENTANA))
 # 1. Fuentes Tipográficas
 # -------------------------------------------------------------
 def cargar_fuente(tamaño, negrita=False):
-    for f in ["consolas", "lucidaconsole", "couriernew", "arial"]:
-        font_match = pygame.font.match_font(f)
+    for f in ([] if tactil.ES_ANDROID else ["consolas", "lucidaconsole", "couriernew", "arial"]):
+        try:
+            font_match = pygame.font.match_font(f)
+        except Exception:
+            font_match = None
         if font_match:
             try:
                 fn = FuenteTraducible(font_match, tamaño)

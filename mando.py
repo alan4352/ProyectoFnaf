@@ -55,6 +55,8 @@ def _agregar(indice):
     try:
         j = pygame.joystick.Joystick(indice)
         j.init()
+        if "accelerometer" in j.get_name().lower():
+            return   # El acelerómetro del celular no es un mando
         mandos[j.get_instance_id()] = j
     except pygame.error:
         pass

@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 """Prepara la carpeta build_android/ para armar el APK con buildozer.
 
-Android ejecuta un archivo llamado main.py, así que se copia fnaf_fabrica.py con ese
-nombre, junto con los demás módulos, los assets y android/buildozer.spec.
+Android ejecuta un archivo llamado main.py: es android/main.py, un lanzador que arranca el juego
+(fnaf_fabrica.py copiado como juego.py) y muestra en pantalla cualquier error.
 
 Uso (en Linux o WSL; en Windows no anda buildozer):
     pip install buildozer cython
@@ -30,8 +30,9 @@ def preparar():
     for nombre in os.listdir(RAIZ):
         if nombre.endswith(".py"):
             shutil.copy2(os.path.join(RAIZ, nombre), DESTINO)
-    shutil.copy2(os.path.join(RAIZ, "fnaf_fabrica.py"), os.path.join(DESTINO, "main.py"))
-    os.remove(os.path.join(DESTINO, "fnaf_fabrica.py"))
+    # El juego va como juego.py y main.py es un lanzador que muestra los errores en pantalla
+    os.replace(os.path.join(DESTINO, "fnaf_fabrica.py"), os.path.join(DESTINO, "juego.py"))
+    shutil.copy2(os.path.join(RAIZ, "android", "main.py"), os.path.join(DESTINO, "main.py"))
     shutil.copytree(os.path.join(RAIZ, "assets"), os.path.join(DESTINO, "assets"))
     shutil.copy2(os.path.join(RAIZ, "android", "buildozer.spec"), DESTINO)
     shutil.copytree(os.path.join(RAIZ, "android", "recipes"), os.path.join(DESTINO, "recipes"))
