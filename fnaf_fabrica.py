@@ -836,6 +836,63 @@ def alternar_puerta():
         uso_puerta_noche = True
         puerta_t_cerrada = 0.0
 
+# -------------------------------------------------------------
+# Modo infinito: sin 6 AM. Cada hora suben todos y se recarga parte de la batería.
+# -------------------------------------------------------------
+INFINITO_IA_INICIAL = 3
+INFINITO_SUBE_POR_HORA = 2
+INFINITO_RECARGA_POR_HORA = 25
+INFINITO_HORA_UNIDAD0 = 4          # Desde esta hora se suma la Unidad 0
+infinito_horas = 0
+infinito_registrado = False
+infinito_record_nuevo = False
+infinito_ultimo = 0.0
+
+def es_infinito():
+    return noche_actual == "INFINITO"
+
+def nombre_noche():
+    return "MODO INFINITO" if es_infinito() else f"NOCHE {noche_actual}"
+
+def avanzar_hora_infinito():
+    """Se llama al pasar cada hora en el modo infinito."""
+    global infinito_horas, bateria, oxigeno
+    infinito_horas += 1
+    for a in (barnaby, silas, penny, bunny):
+        a.nivel_ia = min(20, a.nivel_ia + INFINITO_SUBE_POR_HORA)
+    if not en_apagon:
+        bateria = min(100.0, bateria + INFINITO_RECARGA_POR_HORA)
+    oxigeno = min(100.0, oxigeno + 30)
+    reproducir_sonido(sfx_campana_1, 0.5, 0.5)
+    subtitulo("CAMPANADA: UNA HORA MÁS", 0, 3.0)
+    dif = DIFICULTADES.get(AJUSTES.get("dificultad"), DIFICULTADES["normal"])
+    if infinito_horas == INFINITO_HORA_UNIDAD0:
+        unidad0.reiniciar(True, dif["limite_unidad0"] * 1.2)
+        reproducir_sonido(sfx_estatica_cctv, 0.8, 0.8)
+        subtitulo("ALGO NUEVO SE ENCENDIÓ EN LA PLANTA", 0, 4.0)
+    elif infinito_horas > INFINITO_HORA_UNIDAD0 and unidad0.activa:
+        unidad0.limite = max(5.0, unidad0.limite * 0.92)
+    if infinito_horas >= 10:
+        progreso.desbloquear("maraton")
+
+def registrar_infinito():
+    """Guarda el tiempo resistido en el modo infinito (una vez por intento)."""
+    global infinito_registrado, infinito_record_nuevo, infinito_ultimo
+    if not es_infinito() or infinito_registrado:
+        return
+    infinito_registrado = True
+    infinito_ultimo = tiempo_juego() - tiempo_inicio
+    records = progreso.stats["records_infinito"]
+    infinito_record_nuevo = not MODO_DESARROLLO and (not records or infinito_ultimo > max(records))
+    if not MODO_DESARROLLO:
+        records.append(round(infinito_ultimo, 1))
+        records.sort(reverse=True)
+        del records[5:]
+
+def texto_tiempo_infinito(segundos):
+    horas = int(segundos // DURACION_HORA_SEGUNDOS)
+    return f"{horas} H  ({formato_tiempo(segundos)})"
+
 # Subtítulos de sonidos (accesibilidad): texto, lado (-1 izquierda, 0 centro, 1 derecha), hasta cuándo
 subtitulos_activos = []
 
@@ -883,8 +940,10 @@ def comenzar_noche(noche):
     global progreso_monitor, lure_cooldown, bobina_generador, bobina_cargando, apagon_bobina_activo
     global trampa_cooldown, carga_ir, ir_agotado, pausado
     global llamada_lista, llamada_equivocada, modificadores, uso_puerta_noche, puerta_t_cerrada, puerta_trabada_hasta
+    global infinito_horas, infinito_registrado, infinito_record_nuevo
 
     noche_actual = noche
+    infinito_horas, infinito_registrado, infinito_record_nuevo = 0, False, False
     subtitulos_activos.clear()
     cam_x = 300
     mirando_techo = False
@@ -941,6 +1000,8 @@ def comenzar_noche(noche):
     dif = DIFICULTADES.get(AJUSTES.get("dificultad"), DIFICULTADES["normal"])
     if noche == "CUSTOM":
         difs = desafio_elegido["ia"] if desafio_elegido else ia_custom
+    elif noche == "INFINITO":
+        difs = {k: INFINITO_IA_INICIAL for k in ("Barnaby", "Silas", "Penny", "Rusty Bunny")}
     else:
         base = DIFICULTAD_NOCHES.get(noche, DIFICULTAD_NOCHES[1])
         difs = {k: (0 if v == 0 else max(1, min(20, round(v * dif["factor_ia"]) + dif["suma_ia"]))) for k, v in base.items()}
@@ -987,6 +1048,7 @@ def iniciar_jumpscare(nombre, causa):
     CANAL_VOZ.stop()
     if not causa.startswith("PRUEBA DE JUMPSCARE"):
         progreso.muerte("Apagón" if causa.startswith("SIN ENERGÍA") else nombre)
+        registrar_infinito()
         guardar_progreso()
 
 # -------------------------------------------------------------
@@ -2099,14 +2161,33 @@ def dibujar_menu_custom():
     rect_start = pygame.Rect(ANCHO_VENTANA//2 - 140, 525, 280, 55)
     pygame.draw.rect(pantalla, (25, 120, 60), rect_start, border_radius=6)
     txt_start = fuente_grande.render("INICIAR NOCHE", True, (255, 255, 255))
-    pantalla.blit(txt_start, (rect_start.x + 35, rect_start.y + 12))
+    pantalla.blit(txt_start, (rect_start.centerx - txt_start.get_width() // 2, rect_start.centery - txt_start.get_height() // 2))
+
+    # Modo infinito
+    rect_inf = pygame.Rect(ANCHO_VENTANA//2 - 140, 595, 280, 46)
+    sobre = rect_inf.collidepoint(pos_m)
+    pygame.draw.rect(pantalla, (70, 40, 12) if sobre else (40, 26, 10), rect_inf, border_radius=6)
+    pygame.draw.rect(pantalla, (240, 160, 60), rect_inf, 2, border_radius=6)
+    s_ = fuente_media.render("MODO INFINITO", True, (255, 210, 150))
+    pantalla.blit(s_, (rect_inf.centerx - s_.get_width() // 2, rect_inf.centery - s_.get_height() // 2))
+    records = progreso.stats["records_infinito"]
+    detalle = f"{T('RÉCORD')}: {texto_tiempo_infinito(records[0])}" if records else T("Sin 6 AM: cada hora son más rápidos. ¿Cuánto aguantas?")
+    s_ = fuente_cam.render(detalle, True, (170, 150, 120))
+    pantalla.blit(s_, (ANCHO_VENTANA // 2 - s_.get_width() // 2, 650))
+    if records:
+        x_r = 940
+        s_ = fuente_cam.render("MEJORES TIEMPOS", True, (200, 170, 110))
+        pantalla.blit(s_, (x_r, 560))
+        for k, seg in enumerate(records[:5]):
+            s_ = fuente_cam.render(f"{k + 1}. {texto_tiempo_infinito(seg)}", True, (170, 160, 140))
+            pantalla.blit(s_, (x_r, 580 + k * 18))
 
     rect_volver = pygame.Rect(40, 40, 110, 35)
     pygame.draw.rect(pantalla, (40, 45, 50), rect_volver, border_radius=4)
     txt_v = fuente_pequeña.render("< VOLVER", True, (220, 220, 220))
     pantalla.blit(txt_v, (rect_volver.x + 20, rect_volver.y + 10))
 
-    return controles, rect_start, rect_volver, botones_desafio
+    return controles, rect_start, rect_volver, botones_desafio, rect_inf
 
 def dibujar_pantalla_victoria(t_transcurrido):
     pantalla.fill((4, 6, 8))
@@ -2183,7 +2264,10 @@ def dibujar_menu_pausa():
     pantalla.blit(capa, (0, 0))
     txt = fuente_titulo.render("PAUSA", True, (220, 230, 235))
     pantalla.blit(txt, (ANCHO_VENTANA // 2 - txt.get_width() // 2, 170))
-    sub = fuente_cam.render(f"NOCHE {noche_actual}  //  {hora} AM  //  [ESC] PARA CONTINUAR", True, (130, 160, 150))
+    if es_infinito():
+        sub = fuente_cam.render(f"{T('MODO INFINITO')}  //  {infinito_horas} H  //  {T('[ESC] PARA CONTINUAR')}", True, (130, 160, 150))
+    else:
+        sub = fuente_cam.render(f"NOCHE {noche_actual}  //  {hora} AM  //  [ESC] PARA CONTINUAR", True, (130, 160, 150))
     pantalla.blit(sub, (ANCHO_VENTANA // 2 - sub.get_width() // 2, 230))
     botones = []
     for i, (clave, texto, color) in enumerate([("CONTINUAR", "CONTINUAR", (40, 160, 110)),
@@ -2215,8 +2299,19 @@ def dibujar_pantalla_muerte():
     pantalla.blit(txt_go, (ANCHO_VENTANA // 2 - txt_go.get_width() // 2, 150))
     txt_res = fuente_media.render(mensaje_muerte, True, (255, 200, 200))
     pantalla.blit(txt_res, (ANCHO_VENTANA // 2 - txt_res.get_width() // 2, 225))
-    txt_hora = fuente_pequeña.render(f"NOCHE {noche_actual}  //  RESISTISTE HASTA LAS {hora} AM", True, (170, 180, 185))
-    pantalla.blit(txt_hora, (ANCHO_VENTANA // 2 - txt_hora.get_width() // 2, 262))
+    if es_infinito():
+        txt_hora = fuente_pequeña.render(f"{T('MODO INFINITO')}  //  {T('RESISTISTE')} {texto_tiempo_infinito(infinito_ultimo)}", True, (240, 190, 110))
+        pantalla.blit(txt_hora, (ANCHO_VENTANA // 2 - txt_hora.get_width() // 2, 262))
+        records = progreso.stats["records_infinito"]
+        if infinito_record_nuevo and int(tiempo_juego() * 2) % 2 == 0:
+            s_ = fuente_media.render("¡NUEVO RÉCORD!", True, (255, 215, 60))
+            pantalla.blit(s_, (ANCHO_VENTANA // 2 - s_.get_width() // 2, 300))
+        elif records and not infinito_record_nuevo:
+            s_ = fuente_pequeña.render(f"{T('RÉCORD')}: {texto_tiempo_infinito(records[0])}", True, (170, 160, 130))
+            pantalla.blit(s_, (ANCHO_VENTANA // 2 - s_.get_width() // 2, 305))
+    else:
+        txt_hora = fuente_pequeña.render(f"NOCHE {noche_actual}  //  RESISTISTE HASTA LAS {hora} AM", True, (170, 180, 185))
+        pantalla.blit(txt_hora, (ANCHO_VENTANA // 2 - txt_hora.get_width() // 2, 262))
 
     dibujar_boton_menu(RECT_BTN_REINTENTAR, "[R] REINTENTAR NOCHE", (220, 140, 40))
     dibujar_boton_menu(RECT_BTN_MENU_MUERTE, "[ESC] MENÚ PRINCIPAL", (160, 40, 40))
@@ -2557,9 +2652,10 @@ def dibujar_logros():
     pantalla.blit(txt, (ANCHO_VENTANA // 2 - txt.get_width() // 2, 25))
     sub = fuente_pequeña.render(f"{len(progreso.logros)} DE {len(LOGROS)} DESBLOQUEADOS", True, (170, 160, 120))
     pantalla.blit(sub, (ANCHO_VENTANA // 2 - sub.get_width() // 2, 80))
+    paso = min(57, 505 // ((len(LOGROS) + 1) // 2))   # Se compacta si hay muchos logros
     for i, (id_l, nombre, desc, secreto) in enumerate(LOGROS):
         col, fila = i % 2, i // 2
-        caja = pygame.Rect(40 + col * 570, 110 + fila * 57, 550, 50)
+        caja = pygame.Rect(40 + col * 570, 108 + fila * paso, 550, paso - 6)
         tiene = id_l in progreso.logros
         pygame.draw.rect(pantalla, (26, 22, 10) if tiene else (16, 18, 20), caja, border_radius=5)
         pygame.draw.rect(pantalla, (200, 165, 50) if tiene else (45, 50, 55), caja, 1, border_radius=5)
@@ -2568,8 +2664,8 @@ def dibujar_logros():
             pygame.draw.circle(pantalla, (255, 240, 170), (caja.x + 26, caja.centery), 7)
         if secreto and not tiene:
             nombre, desc = "???", "Logro secreto."
-        pantalla.blit(fuente_pequeña.render(nombre, True, (255, 250, 230) if tiene else (130, 135, 140)), (caja.x + 52, caja.y + 7))
-        pantalla.blit(fuente_cam.render(desc, True, (190, 185, 170) if tiene else (95, 100, 105)), (caja.x + 52, caja.y + 28))
+        pantalla.blit(fuente_pequeña.render(nombre, True, (255, 250, 230) if tiene else (130, 135, 140)), (caja.x + 52, caja.y + caja.height // 2 - 19))
+        pantalla.blit(fuente_cam.render(desc, True, (190, 185, 170) if tiene else (95, 100, 105)), (caja.x + 52, caja.y + caja.height // 2 + 2))
     dibujar_boton_menu(RECT_VOLVER_ABAJO, "[ESC] VOLVER", (40, 160, 110))
 
 def dibujar_resumen():
@@ -2607,6 +2703,7 @@ def dibujar_resumen():
         ("Cintas completadas", st["cintas_completadas"]),
         ("Intentos fallidos en cintas", st["cintas_fallos"]),
         ("Logros", f"{len(progreso.logros)}/{len(LOGROS)}"),
+        ("Récord modo infinito", texto_tiempo_infinito(st["records_infinito"][0]) if st["records_infinito"] else "-"),
     ])
     columna(440, 160, "DEFENSAS", [
         ("Compuertas cerradas", st["puertas_cerradas"]),
@@ -2757,7 +2854,7 @@ while True:
         continue
 
     elif estado_actual == ESTADO_CUSTOM:
-        controles_ia, btn_iniciar, btn_volver, botones_desafio = dibujar_menu_custom()
+        controles_ia, btn_iniciar, btn_volver, botones_desafio, btn_infinito = dibujar_menu_custom()
         for evento in pygame.event.get():
             if evento.type == pygame.QUIT:
                 pygame.quit()
@@ -2772,6 +2869,9 @@ while True:
                     estado_actual = ESTADO_MENU
                 if btn_iniciar.collidepoint(mouse_pos):
                     comenzar_noche("CUSTOM")
+                elif btn_infinito.collidepoint(mouse_pos):
+                    reproducir_sonido(sfx_linterna)
+                    comenzar_noche("INFINITO")
                 for d_, rb in botones_desafio:
                     if rb.collidepoint(mouse_pos):
                         desafio_elegido = None if desafio_elegido is d_ else d_
@@ -3460,7 +3560,7 @@ while True:
                 puerta_trabada_hasta = tiempo_juego() + 4.0
                 reproducir_sonido(sfx_alarma_error, 0.8, 0.1)
         if not en_apagon:
-            mult_bat = 1.0 if noche_actual == "CUSTOM" else DIFICULTADES.get(AJUSTES.get("dificultad"), DIFICULTADES["normal"])["bateria"]
+            mult_bat = 1.0 if noche_actual in ("CUSTOM", "INFINITO") else DIFICULTADES.get(AJUSTES.get("dificultad"), DIFICULTADES["normal"])["bateria"]
             bateria -= (barras_uso * 0.14) * mult_bat * dt
             if bateria <= 0:
                 bateria = 0
@@ -3506,6 +3606,7 @@ while True:
                     mensaje_muerte = "FALLO EN VENTILACIÓN: ASFIXIA POR GASES INDUSTRIALES"
                     animatronico_atacante = ""
                     progreso.muerte("Asfixia")
+                    registrar_infinito()
                     guardar_progreso()
             else:
                 oxigeno = min(100.0, oxigeno + (3.3 if modificadores.get("oxigeno_rapido") else 5.5) * dt)
@@ -3590,12 +3691,15 @@ while True:
         if hora > 12: hora -= 12
 
         # Más agresivos a las 2, 3 y 4 AM (solo en las noches de la historia)
-        con_bonus = noche_actual != "CUSTOM" and DIFICULTADES.get(AJUSTES.get("dificultad"), DIFICULTADES["normal"])["bonus_hora"]
+        con_bonus = noche_actual not in ("CUSTOM", "INFINITO") and DIFICULTADES.get(AJUSTES.get("dificultad"), DIFICULTADES["normal"])["bonus_hora"]
         bonus = {2: 1, 3: 2, 4: 3, 5: 3}.get(hora, 0) if con_bonus else 0
         for a in (barnaby, silas, penny, bunny):
             a.bonus_hora = bonus
 
-        if segundos_pasados >= DURACION_HORA_SEGUNDOS * 6:
+        if es_infinito():
+            while infinito_horas < int(segundos_pasados // DURACION_HORA_SEGUNDOS) and not juego_terminado and not en_jumpscare:
+                avanzar_hora_infinito()
+        elif segundos_pasados >= DURACION_HORA_SEGUNDOS * 6:
             tiempo_inicio_6am = tiempo_juego()
             campanas_tocadas = [False, False, False]
             registrar_fin_de_noche()
@@ -3654,9 +3758,13 @@ while True:
 
     if not en_apagon:
         txt_hora = fuente_grande.render(f"{hora} AM", True, (255, 255, 255))
-        txt_tag_noche = fuente_pequeña.render(f"NOCHE {noche_actual}", True, (180, 190, 200))
+        if es_infinito():
+            txt_tag_noche = fuente_pequeña.render(T("MODO INFINITO") + f"  //  {infinito_horas} H", True, (240, 170, 80))
+            pantalla.blit(txt_tag_noche, (ANCHO_VENTANA - 20 - txt_tag_noche.get_width(), 60))
+        else:
+            txt_tag_noche = fuente_pequeña.render(f"NOCHE {noche_actual}", True, (180, 190, 200))
+            pantalla.blit(txt_tag_noche, (ANCHO_VENTANA - 130, 60))
         pantalla.blit(txt_hora, (ANCHO_VENTANA - 130, 25))
-        pantalla.blit(txt_tag_noche, (ANCHO_VENTANA - 130, 60))
 
         if (error_ventilacion or error_camaras or apagon_bobina_activo) and int(tiempo_juego() * 3) % 2 == 0:
             msg_hud = "[!] GENERADOR CAM_08 VACÍO" if apagon_bobina_activo else "[!] ERROR DE SISTEMA - PULSA [M]"

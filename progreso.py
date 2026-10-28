@@ -29,6 +29,7 @@ ESTADISTICAS_POR_DEFECTO = {
     "mejor_bateria": 0.0,
     "llamadas_completas": [],     # Noches cuya llamada se escuchó entera
     "desafios": [],               # Desafíos de Custom Night superados
+    "records_infinito": [],       # Mejores 5 tiempos del modo infinito (segundos)
 }
 
 # (id, nombre, descripción, secreto)
@@ -50,6 +51,7 @@ LOGROS = [
     ("turno_completo", "TURNO COMPLETO", "Supera todos los desafíos de la Custom Night.", False),
     ("fantasma", "¿VISTE ESO?", "Algo pasó frente a una cámara.", True),
     ("numero_equivocado", "NÚMERO EQUIVOCADO", "Recibe una llamada que no era para ti.", True),
+    ("maraton", "MARATÓN", "Resiste 10 horas en el modo infinito.", False),
     ("cinta_cero", "0303", "Encuentra la cinta que nadie debía escuchar.", True),
 ]
 NOMBRES_LOGROS = {l[0]: l for l in LOGROS}

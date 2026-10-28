@@ -46,6 +46,11 @@ UI_EN = {
         "Applies to nights 1-6 starting next night. STORY: easier, to enjoy the story.",
     "Cambia el idioma de todo el juego.": "Changes the language of the whole game.",
     "SUBTÍTULOS DE SONIDOS": "SOUND SUBTITLES",
+    "MODO INFINITO": "ENDLESS MODE", "Récord modo infinito": "Endless mode record", "RESISTISTE": "YOU LASTED", "RÉCORD": "RECORD", "¡NUEVO RÉCORD!": "NEW RECORD!",
+    "MEJORES TIEMPOS": "BEST TIMES", "Sin 6 AM: cada hora son más rápidos. ¿Cuánto aguantas?":
+        "No 6 AM: every hour they get faster. How long can you last?",
+    "CAMPANADA: UNA HORA MÁS": "BELL: ONE MORE HOUR", "ALGO NUEVO SE ENCENDIÓ EN LA PLANTA": "SOMETHING NEW SWITCHED ON IN THE PLANT",
+    "MARATÓN": "MARATHON", "Resiste 10 horas en el modo infinito.": "Last 10 hours in endless mode.",
     "Muestra en pantalla los sonidos importantes (pasos, respiración, golpes) y de qué lado vienen.":
         "Shows important sounds on screen (footsteps, breathing, knocking) and which side they come from.",
     "PASOS METÁLICOS": "METALLIC FOOTSTEPS", "RUIDO EN LOS DUCTOS": "NOISE IN THE DUCTS",
