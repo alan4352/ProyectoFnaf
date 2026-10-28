@@ -1,0 +1,71 @@
+# Arma el APK de Android con buildozer. Tarda bastante (la primera vez, 30-60 minutos).
+# El APK queda en el zip "FNAF_Industrial-android" de cada ejecución y, con un tag v*, en el Release.
+name: Version Android
+
+on:
+  push:
+    branches: ["**"]
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: android-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 150
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Dependencias del sistema
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y autoconf automake libtool pkg-config zlib1g-dev libncurses-dev \
+            cmake libffi-dev libssl-dev zip unzip ccache
+          pip install buildozer cython
+
+      - name: Preparar carpeta
+        run: python herramientas/preparar_android.py
+
+      - name: Cache de buildozer (SDK, NDK y librerías ya compiladas)
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.buildozer
+            build_android/.buildozer
+          key: buildozer-${{ hashFiles('android/buildozer.spec') }}-v1
+
+      - name: Compilar APK
+        working-directory: build_android
+        run: yes | buildozer android debug 2>&1 | tail -n 400
+
+      - name: Revisar el APK
+        run: |
+          ls -la build_android/bin
+          ls build_android/bin/*.apk
+
+      - name: Subir APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: FNAF_Industrial-android
+          path: build_android/bin/*.apk
+
+      - name: Adjuntar al Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: build_android/bin/*.apk
