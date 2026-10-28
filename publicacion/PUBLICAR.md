@@ -16,6 +16,15 @@ Guía paso a paso para armar el `.exe` y subir el juego a **itch.io** (recomenda
 > Si la instalación falla con un error de `pygame` o de *wheel*, borrá la carpeta `venv` y volvé a
 > ejecutar `compilar.bat`. El juego usa **pygame-ce**, que tiene versión lista para Python 3.10 a 3.15.
 
+### Opción sin compilar en tu computadora: GitHub Actions
+
+El repositorio compila el juego solo cada vez que subís cambios. Entrá a la pestaña **Actions**,
+abrí la última ejecución de *"Compilar juego (Windows)"* y descargá **FNAF_Industrial-windows** en
+*Artifacts*: es un zip con el `.exe` y un `LEEME.txt`, listo para compartir.
+
+Para una versión oficial: en GitHub, *Releases → Draft a new release → Choose a tag*, escribí `v1.1`
+(o el número que toque) y publicala. GitHub compila el juego y adjunta el zip a esa Release solo.
+
 ## 2. Probar antes de publicar
 
 Copiá `FNAF_Industrial.exe` a una carpeta vacía (por ejemplo, el escritorio) y comprobá:
@@ -30,10 +39,11 @@ Copiá `FNAF_Industrial.exe` a una carpeta vacía (por ejemplo, el escritorio) y
 
 ## 3. Armar el archivo para descargar
 
-Creá una carpeta llamada `FNAF_Industrial_v1.0` con:
+Si usaste GitHub Actions, el zip ya viene armado. Si compilaste en tu computadora, creá una carpeta
+llamada `FNAF_Industrial_v1.0` con:
 
 - `FNAF_Industrial.exe`
-- un `LEEME.txt` corto (podés copiar la sección "Controles" de la página de itch)
+- `publicacion/LEEME.txt` (controles e instrucciones en español e inglés)
 
 Comprimila en **`FNAF_Industrial_v1.0.zip`** (clic derecho → *Enviar a* → *Carpeta comprimida*).
 **No** incluyas `save_data.json` ni `ajustes.json`: son tus partidas.
