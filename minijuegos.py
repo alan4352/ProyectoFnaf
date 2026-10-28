@@ -556,8 +556,9 @@ class CintaMarta(Cinta):
 
     def dibujar_hud_extra(self, pantalla):
         f = self.ctx["fuentes"]
-        x, y, ancho = 430, 64, 340
-        pantalla.blit(f["8bit"].render("PRESIÓN CALDERA 3", True, (230, 200, 190)), (x - 175, y + 2))
+        x, y, ancho = 760, 64, 260
+        etiqueta = f["8bit"].render("PRESIÓN CALDERA 3", True, (230, 200, 190))
+        pantalla.blit(etiqueta, (x - etiqueta.get_width() - 12, y + 2))
         pygame.draw.rect(pantalla, (25, 20, 20), (x, y, ancho, 18))
         color = (60, 200, 90) if self.presion < 50 else ((240, 190, 40) if self.presion < 80 else (240, 50, 40))
         pygame.draw.rect(pantalla, color, (x, y, int(ancho * self.presion / 100), 18))
@@ -565,7 +566,7 @@ class CintaMarta(Cinta):
         for n in (1, 2, 3):
             cerrada = n <= self.cerradas
             s = f["8bit"].render(f"V{n}", True, (90, 230, 120) if cerrada else (230, 90, 80))
-            pantalla.blit(s, (x + ancho + 20 + (n - 1) * 40, y + 2))
+            pantalla.blit(s, (x + ancho + 14 + (n - 1) * 34, y + 2))
         # Números de las válvulas sobre el mapa
         for n, r in self.valvulas.items():
             s = f["8bit"].render(str(n), True, (255, 255, 255))

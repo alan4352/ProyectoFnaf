@@ -9,7 +9,39 @@ DIFICULTAD_NOCHES = {
   3: {"Barnaby": 9, "Silas": 8, "Penny": 6, "Rusty Bunny": 7},
   4: {"Barnaby": 12, "Silas": 11, "Penny": 9, "Rusty Bunny": 10},
   5: {"Barnaby": 15, "Silas": 14, "Penny": 13, "Rusty Bunny": 14},
+  6: {"Barnaby": 14, "Silas": 13, "Penny": 13, "Rusty Bunny": 14},   # + la Unidad 0
 }
+
+# Ajuste de dificultad (menú de ajustes). No afecta a la Custom Night.
+DIFICULTADES = {
+    "historia":  {"nombre": "HISTORIA (FÁCIL)", "factor_ia": 0.6, "suma_ia": 0, "bateria": 0.75, "bonus_hora": False, "limite_unidad0": 16.0},
+    "normal":    {"nombre": "NORMAL",           "factor_ia": 1.0, "suma_ia": 0, "bateria": 1.0,  "bonus_hora": True,  "limite_unidad0": 12.0},
+    "pesadilla": {"nombre": "PESADILLA",        "factor_ia": 1.0, "suma_ia": 4, "bateria": 1.15, "bonus_hora": True,  "limite_unidad0": 9.0},
+}
+
+# Desafíos de la Custom Night. "mods" cambia reglas de la noche:
+#   puerta_limitada: la compuerta se traba si queda cerrada más de 5 s
+#   oxigeno_rapido: el oxígeno cae más rápido y se recupera más lento
+#   fallas_frecuentes: las fallas de ventilación/cámaras aparecen el doble de seguido
+#   bateria_inicial: batería con la que empieza la noche
+#   sin_ir: no hay visión nocturna
+DESAFIOS = [
+    {"id": "marta", "nombre": "TURNO DE MARTA",
+     "desc": "Solo Penny, al máximo. La compuerta se traba si queda cerrada más de 5 segundos.",
+     "ia": {"Barnaby": 0, "Silas": 0, "Penny": 20, "Rusty Bunny": 0}, "mods": {"puerta_limitada": True}},
+    {"id": "sin_aire", "nombre": "SIN AIRE",
+     "desc": "Silas al máximo. El oxígeno cae más rápido y la ventilación falla seguido.",
+     "ia": {"Barnaby": 5, "Silas": 20, "Penny": 0, "Rusty Bunny": 0}, "mods": {"oxigeno_rapido": True, "fallas_frecuentes": True}},
+    {"id": "apagon", "nombre": "APAGÓN",
+     "desc": "Los cuatro en 10, pero la noche empieza con 55% de batería.",
+     "ia": {"Barnaby": 10, "Silas": 10, "Penny": 10, "Rusty Bunny": 10}, "mods": {"bateria_inicial": 55}},
+    {"id": "a_ciegas", "nombre": "A CIEGAS",
+     "desc": "Sin visión nocturna y con fallas de cámaras frecuentes.",
+     "ia": {"Barnaby": 12, "Silas": 0, "Penny": 12, "Rusty Bunny": 12}, "mods": {"sin_ir": True, "fallas_frecuentes": True}},
+    {"id": "banda", "nombre": "LA BANDA COMPLETA",
+     "desc": "Los cuatro en 15. Sin trucos.",
+     "ia": {"Barnaby": 15, "Silas": 15, "Penny": 15, "Rusty Bunny": 15}, "mods": {}},
+]
 
 # Los diálogos de las llamadas están en historia.py
 

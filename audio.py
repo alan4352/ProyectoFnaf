@@ -48,8 +48,12 @@ def crear_sonido_procedural(duracion, frecuencia_base, tipo="seno", fade=True, m
 
 SONIDOS_REALES = []
 
+al_progreso = None   # Función opcional que se llama al cargar cada sonido (pantalla de carga)
+
 def sonido(nombre, *args, **kwargs):
     """Usa el archivo de audio real si existe; si no, genera el sonido sintético de respaldo."""
+    if al_progreso:
+        al_progreso(nombre)
     real = cargar_sonido_opcional(nombre)
     if real:
         SONIDOS_REALES.append(nombre)

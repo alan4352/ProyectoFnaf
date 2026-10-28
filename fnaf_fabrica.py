@@ -13,6 +13,13 @@ from datos import *         # dificultad, diálogos, cámaras, rutas
 from efectos import aplicar_crt
 from historia import *      # textos de la historia: llamadas, cintas, finales
 from minijuegos import crear_minijuego, Relato
+from progreso import Progreso, LOGROS, NOMBRES_LOGROS, formato_tiempo
+from unidad0 import Unidad0, POSICIONES as POS_UNIDAD0, SEGUNDOS_PARA_RECHAZAR
+import idioma
+from idioma import T, FuenteTraducible
+import historia as historia_es
+import historia_en
+import minijuegos as modulo_minijuegos
 
 # -------------------------------------------------------------
 # Reloj propio del juego: solo avanza mientras el juego no está en pausa,
@@ -32,6 +39,7 @@ def tiempo_juego():
 # Si ponés MODO_DESARROLLO = True, el juego arranca con el modo ya activado.
 MODO_DESARROLLO = False
 CODIGO_DESARROLLO = "dunmore"
+VERSION = "1.0"
 pygame.init()
 pygame.mixer.init(frequency=44100, size=-16, channels=2, buffer=512)
 pygame.mixer.set_num_channels(24)
@@ -57,6 +65,9 @@ def alternar_pantalla_completa():
     ventana.aplicar_modo()
     guardar_ajustes(AJUSTES)
 pygame.display.set_caption("FNAF: Industrial Sector (1982)")
+_icono = cargar_imagen_opcional("icono.png")
+if _icono:
+    pygame.display.set_icon(pygame.transform.smoothscale(_icono, (64, 64)))
 reloj = pygame.time.Clock()
 ventana.reloj = reloj
 
@@ -71,12 +82,14 @@ def cargar_fuente(tamaño, negrita=False):
         font_match = pygame.font.match_font(f)
         if font_match:
             try:
-                fn = pygame.font.Font(font_match, tamaño)
+                fn = FuenteTraducible(font_match, tamaño)
                 fn.set_bold(negrita)
                 return fn
             except:
                 pass
-    return pygame.font.SysFont(None, tamaño, bold=negrita)
+    fn = FuenteTraducible(None, tamaño)
+    fn.set_bold(negrita)
+    return fn
 
 fuente_cam = cargar_fuente(13, True)
 fuente_pequeña = cargar_fuente(15, True)
@@ -87,6 +100,45 @@ fuente_reloj_6am = cargar_fuente(72, True)
 fuente_panel = cargar_fuente(18, True)
 fuente_llamada = cargar_fuente(16, True)
 fuente_8bit = cargar_fuente(14, True)
+
+# Idioma: la interfaz se traduce sola (idioma.py) y la historia sale de historia.py o historia_en.py
+CLAVES_HISTORIA = ["INTRO_JUEGO", "TITULOS_NOCHE", "DIALOGOS_NOCHES", "CINTAS", "FINAL_NORMAL", "FINAL_VERDADERO",
+                   "FRASES_ALUCINACION", "FINAL_NOCHE6", "LLAMADA_EQUIVOCADA", "CINTA_SECRETA", "CREDITOS"]
+
+def aplicar_idioma():
+    idioma.ACTUAL["idioma"] = AJUSTES.get("idioma", "es")
+    modulo = historia_en if idioma.ACTUAL["idioma"] == "en" else historia_es
+    for clave in CLAVES_HISTORIA:
+        globals()[clave] = getattr(modulo, clave)
+    modulo_minijuegos.CINTAS = modulo.CINTAS
+
+aplicar_idioma()
+
+# -------------------------------------------------------------
+# Pantalla de carga (se ve mientras se generan los sonidos y se cargan las imágenes)
+# -------------------------------------------------------------
+PASOS_CARGA = 30
+_pasos_carga = [0]
+
+def pantalla_de_carga(texto=""):
+    _pasos_carga[0] += 1
+    frac = min(1.0, _pasos_carga[0] / PASOS_CARGA)
+    pantalla.fill((4, 5, 6))
+    for txt, fuente, y, color in [("ENSAMBLADORA DUNMORE S.A. PRESENTA", fuente_pequeña, 220, (110, 130, 120)),
+                                  ("FNAF: INDUSTRIAL SECTOR", fuente_titulo, 260, (225, 230, 235)),
+                                  ("(1982)", fuente_media, 320, (200, 60, 60))]:
+        sup = fuente.render(txt, True, color)
+        pantalla.blit(sup, (ANCHO_VENTANA // 2 - sup.get_width() // 2, y))
+    barra = pygame.Rect(ANCHO_VENTANA // 2 - 220, 410, 440, 10)
+    pygame.draw.rect(pantalla, (25, 30, 30), barra)
+    pygame.draw.rect(pantalla, (60, 200, 130), (barra.x, barra.y, int(barra.w * frac), barra.h))
+    sup = fuente_cam.render(texto.upper(), True, (90, 110, 100))
+    pantalla.blit(sup, (ANCHO_VENTANA // 2 - sup.get_width() // 2, 430))
+    pygame.event.pump()
+    pygame.display.flip()
+
+pantalla_de_carga("INICIANDO")
+modulo_audio.al_progreso = lambda nombre: pantalla_de_carga("PREPARANDO SONIDO: " + nombre.replace("_", " "))
 
 # -------------------------------------------------------------
 # 2. Generador de Audio Procedural Sintético (WAV en memoria)
@@ -128,6 +180,7 @@ sfx_ambiente = sonido("ambiente", 3.0, 55, "seno", fade=False)
 if "ambiente" not in SONIDOS_REALES:
     sfx_ambiente.set_volume(0.12)
 musica_menu = cargar_sonido_opcional("musica_menu")
+modulo_audio.al_progreso = None
 VOCES_LLAMADA = {n: cargar_sonido_opcional(f"llamada_noche_{n}") for n in range(1, 6)}
 print(f"[AUDIO] Archivos reales: {', '.join(SONIDOS_REALES) or 'ninguno'}"
       f" | gritos: {sum(1 for g in GRITOS.values() if g)}/4"
@@ -147,7 +200,7 @@ def actualizar_audio_continuo():
         CANAL_AMBIENTE.play(sfx_ambiente, loops=-1)
     elif not en_noche and CANAL_AMBIENTE.get_busy():
         CANAL_AMBIENTE.fadeout(400)
-    en_menu = estado_actual in (ESTADO_MENU, ESTADO_CUSTOM, ESTADO_ARCHIVO)
+    en_menu = estado_actual in (ESTADO_MENU, ESTADO_CUSTOM, ESTADO_ARCHIVO, ESTADO_EXTRAS, ESTADO_LOGROS, ESTADO_RESUMEN)
     if musica_menu and en_menu and not CANAL_MUSICA.get_busy():
         CANAL_MUSICA.play(musica_menu, loops=-1, fade_ms=800)
     elif not en_menu and CANAL_MUSICA.get_busy():
@@ -164,6 +217,10 @@ juego_completado_5_noches = datos_guardados.get("juego_completado_5_noches", Fal
 ia_custom = datos_guardados.get("ia_custom", {"Barnaby": 10, "Silas": 10, "Penny": 10, "Rusty Bunny": 10})
 record_20_20_20_20 = datos_guardados.get("record_20_20_20_20", False)
 evidencias = set(datos_guardados.get("evidencias", []))   # Pruebas encontradas en las cintas (1 a 4)
+noche6_desbloqueada = datos_guardados.get("noche6_desbloqueada", False)
+noche6_superada = datos_guardados.get("noche6_superada", False)
+final_verdadero_visto = datos_guardados.get("final_verdadero_visto", False)
+progreso = Progreso(datos_guardados)       # Estadísticas y logros (progreso.py)
 
 def guardar_progreso():
     guardar_partida({
@@ -172,12 +229,17 @@ def guardar_progreso():
         "ia_custom": ia_custom,
         "record_20_20_20_20": record_20_20_20_20,
         "evidencias": sorted(evidencias),
+        "noche6_desbloqueada": noche6_desbloqueada,
+        "noche6_superada": noche6_superada,
+        "final_verdadero_visto": final_verdadero_visto,
+        **progreso.a_dict(),
     })
 
 # -------------------------------------------------------------
 # 4. Carga Segura de Sprites y Texturas
 # -------------------------------------------------------------
 ASSETS = {}
+pantalla_de_carga("CARGANDO IMÁGENES")
 
 # Índice de todas las imágenes dentro de assets/ y sus subcarpetas
 # (camaras/, jumpscares/, oficina/, sprites/...). Se busca por nombre de archivo,
@@ -244,6 +306,24 @@ def sprite(clave, fps=8):
     if cuadros:
         return cuadros[int(tiempo_juego() * fps) % len(cuadros)]
     return ASSETS.get(clave)
+
+def _silueta(img):
+    if img is None:
+        return None
+    s_ = img.copy()
+    s_.fill((14, 14, 18, 255), special_flags=pygame.BLEND_RGBA_MULT)
+    w, h = s_.get_size()
+    for ex in (0.43, 0.57):
+        pygame.draw.circle(s_, (230, 240, 255, 255), (int(w * ex), int(h * 0.16)), max(3, w // 60))
+    return s_
+
+ASSETS["unidad0"] = _silueta(ASSETS.get("barnaby_cam"))
+if ASSETS.get("jumpscare_Barnaby"):
+    _js = ASSETS["jumpscare_Barnaby"].copy()
+    _js.fill((55, 40, 45), special_flags=pygame.BLEND_RGB_MULT)
+    _js.fill((40, 0, 0), special_flags=pygame.BLEND_RGB_ADD)
+    ASSETS["jumpscare_Unidad 0"] = _js
+OPCIONALES.add("jumpscare_Unidad 0")
 
 _faltan = [k for k, v in ASSETS.items() if v is None and k not in OPCIONALES]
 print(f"[ASSETS] Cargados {len(ASSETS) - len(_faltan)}/{len(ASSETS)}. Faltan: {', '.join(_faltan) or 'ninguno'}")
@@ -546,6 +626,13 @@ ESTADO_AJUSTES = "MENU_AJUSTES"
 ESTADO_RELATO = "RELATO"
 ESTADO_TITULO_NOCHE = "TITULO_NOCHE"
 ESTADO_ARCHIVO = "ARCHIVO_1982"
+ESTADO_EXTRAS = "EXTRAS"
+ESTADO_LOGROS = "LOGROS"
+ESTADO_RESUMEN = "RESUMEN_ESTADISTICAS"
+ESTADO_CREDITOS = "CREDITOS"
+resumen_volver_a = ESTADO_EXTRAS   # A dónde se va después de la pantalla de estadísticas
+creditos_volver_a = ESTADO_EXTRAS
+t_creditos = 0.0
 ajustes_volver_a = "MENU"     # "MENU" o "PAUSA": a dónde vuelve el menú de ajustes
 ajustes_seleccion = 0
 
@@ -638,6 +725,15 @@ DURACION_REBOOT = 3.5
 
 
 llamada_activa = False
+llamada_lista = []            # Líneas de la llamada de esta noche (normalmente DIALOGOS_NOCHES)
+llamada_equivocada = False
+desafio_elegido = None        # Desafío de Custom Night seleccionado (o None)
+modificadores = {}            # Reglas especiales de la noche (desafíos)
+puerta_t_cerrada = 0.0
+puerta_trabada_hasta = 0.0
+fantasma_cam, fantasma_hasta = None, 0.0
+unidad0 = Unidad0()
+ultimo_aviso_unidad0 = 0.0
 llamada_muteada = False
 indice_dialogo = 0
 tiempo_ultimo_texto = 0.0
@@ -717,6 +813,24 @@ silas = Animatronico("Silas", RUTA_SILAS_NORTE, 9, 8.0, [RUTA_SILAS_NORTE, RUTA_
 penny = Animatronico("Penny", ["CAM_01", "CAM_03", "CAM_06", "PUERTA_IZQ", "OFICINA"], 8, 8.5)
 bunny = Animatronico("Rusty Bunny", ["CAM_01", "CAM_04", "CAM_05", "CAM_08", "VENTANA_DER", "OFICINA"], 9, 7.8)
 
+def intervalo_fallas(base=(22.0, 40.0)):
+    if modificadores.get("fallas_frecuentes"):
+        return (base[0] / 2.2, base[1] / 2.2)
+    return base
+
+def alternar_puerta():
+    """Abre o cierra la compuerta izquierda (con estadísticas y la regla de 'puerta trabada')."""
+    global puerta_izq_cerrada, uso_puerta_noche, puerta_t_cerrada
+    if not puerta_izq_cerrada and tiempo_juego() < puerta_trabada_hasta:
+        reproducir_sonido(sfx_alarma_error, 0.6, 0.1)
+        return
+    reproducir_sonido(sfx_puerta, 0.9, 0.2)
+    puerta_izq_cerrada = not puerta_izq_cerrada
+    if puerta_izq_cerrada:
+        progreso.sumar("puertas_cerradas")
+        uso_puerta_noche = True
+        puerta_t_cerrada = 0.0
+
 def comenzar_noche(noche):
     global cam_x, mirando_techo, monitor_abierto, modo_ventilacion, panel_mantenimiento_abierto
     global camara_seleccionada, trampa_ducto, bateria, oxigeno, hora
@@ -730,6 +844,7 @@ def comenzar_noche(noche):
     global vision_nocturna_cam, glitch_cam_timer, progreso_cegado_barnaby, calor_linterna, linterna_sobrecalentada
     global progreso_monitor, lure_cooldown, bobina_generador, bobina_cargando, apagon_bobina_activo
     global trampa_cooldown, carga_ir, ir_agotado, pausado
+    global llamada_lista, llamada_equivocada, modificadores, uso_puerta_noche, puerta_t_cerrada, puerta_trabada_hasta
 
     noche_actual = noche
     cam_x = 300
@@ -778,12 +893,19 @@ def comenzar_noche(noche):
     error_ventilacion = False
     error_camaras = False
     reboot_activo = None
-    tiempo_siguiente_fallo = tiempo_juego() + random.uniform(22.0, 40.0)
+    modificadores = dict(desafio_elegido["mods"]) if (noche == "CUSTOM" and desafio_elegido) else {}
+    bateria = float(modificadores.get("bateria_inicial", 100))
+    tiempo_siguiente_fallo = tiempo_juego() + random.uniform(*intervalo_fallas())
+    uso_puerta_noche = False
+    puerta_t_cerrada, puerta_trabada_hasta = 0.0, 0.0
 
+    dif = DIFICULTADES.get(AJUSTES.get("dificultad"), DIFICULTADES["normal"])
     if noche == "CUSTOM":
-        difs = ia_custom
+        difs = desafio_elegido["ia"] if desafio_elegido else ia_custom
     else:
-        difs = DIFICULTAD_NOCHES.get(noche, DIFICULTAD_NOCHES[1])
+        base = DIFICULTAD_NOCHES.get(noche, DIFICULTAD_NOCHES[1])
+        difs = {k: (0 if v == 0 else max(1, min(20, round(v * dif["factor_ia"]) + dif["suma_ia"]))) for k, v in base.items()}
+    unidad0.reiniciar(noche == 6, dif["limite_unidad0"])
 
     barnaby.reiniciar(difs["Barnaby"])
     silas.reiniciar(difs["Silas"])
@@ -791,8 +913,13 @@ def comenzar_noche(noche):
     bunny.reiniciar(difs["Rusty Bunny"])
 
     CANAL_VOZ.stop()
+    # Secreto: muy rara vez entra una llamada equivocada (noches 2 a 5)
+    llamada_equivocada = isinstance(noche, int) and 2 <= noche <= 5 and random.random() < 1 / 12
+    llamada_lista = LLAMADA_EQUIVOCADA if llamada_equivocada else DIALOGOS_NOCHES.get(noche, [])
+    if llamada_equivocada:
+        progreso.desbloquear("numero_equivocado")
     if isinstance(noche, int) and noche in DIALOGOS_NOCHES:
-        if VOCES_LLAMADA.get(noche):
+        if VOCES_LLAMADA.get(noche) and not llamada_equivocada:
             CANAL_VOZ.play(VOCES_LLAMADA[noche])
         llamada_activa = True
         llamada_muteada = False
@@ -819,6 +946,9 @@ def iniciar_jumpscare(nombre, causa):
     intensidad_shake = 30.0
     reproducir_sonido(GRITOS.get(nombre) or sfx_jumpscare)
     CANAL_VOZ.stop()
+    if not causa.startswith("PRUEBA DE JUMPSCARE"):
+        progreso.muerte("Apagón" if causa.startswith("SIN ENERGÍA") else nombre)
+        guardar_progreso()
 
 # -------------------------------------------------------------
 # 10. Cintas de 1982 (minijuegos), relatos y títulos de noche
@@ -909,7 +1039,7 @@ def dibujar_archivo():
                 s_ = fuente_cam.render(linea, True, (220, 225, 220))
                 pantalla.blit(s_, (rect.centerx - s_.get_width() // 2, rect.y + 135 + k * 20))
             if n in evidencias:
-                partes = partir_texto(datos_c["prueba"], fuente_cam, rect.w - 20)
+                partes = partir_texto(T(datos_c["prueba"]), fuente_cam, rect.w - 20)
                 for k, linea in enumerate(["PRUEBA:"] + partes):
                     s_ = fuente_cam.render(linea, True, (255, 210, 90))
                     pantalla.blit(s_, (rect.centerx - s_.get_width() // 2, rect.y + 195 + k * 18))
@@ -1345,6 +1475,11 @@ def dibujar_oficina_con_imagen(luz_izq_efectiva, luz_der_efectiva):
     pygame.draw.circle(superficie_oficina, (15, 18, 20), (512, 385), 10)
     pygame.draw.circle(superficie_oficina, color_luz_term, (512, 385), 7)
     superficie_oficina.blit(fuente_cam.render("MANT.", True, (180, 195, 205)), (494, 408))
+    # Nota pegada en la pared (pista del código secreto)
+    nota = pygame.Rect(556, 372, 38, 30)
+    pygame.draw.rect(superficie_oficina, (190, 175, 90), nota)
+    pygame.draw.rect(superficie_oficina, (120, 105, 50), nota, 1)
+    superficie_oficina.blit(fuente_cam.render("0303", True, (60, 40, 30)), (nota.x + 4, nota.y + 8))
 
     # --- PUERTA IZQUIERDA ---
     # La imagen ya muestra la puerta blindada cerrada. Con la puerta abierta se dibuja el hueco oscuro.
@@ -1542,6 +1677,28 @@ def dibujar_sistema_camaras():
                 pantalla_camaras.blit(txt_alerta, (140, 260))
 
         brillo_boost = 35 if vision_nocturna_cam else 0
+
+        # Unidad 0 (noche 6)
+        if unidad0.activa and camara_seleccionada == unidad0.sala():
+            ux, uy, ue = POS_UNIDAD0[camara_seleccionada]
+            dibujar_sprite_centrado(pantalla_camaras, ASSETS.get("unidad0"), ux, uy, ue, 235, vivo=True)
+            if unidad0.en_pasillo():
+                prog_r = unidad0.mirada / SEGUNDOS_PARA_RECHAZAR
+                pygame.draw.rect(pantalla_camaras, (20, 20, 24), (360, 130, 200, 10))
+                pygame.draw.rect(pantalla_camaras, (230, 230, 255), (360, 130, int(200 * prog_r), 10))
+                lbl_u = fuente_cam.render("NO LE QUITES LOS OJOS DE ENCIMA", True, (230, 230, 255))
+                pantalla_camaras.blit(lbl_u, (460 - lbl_u.get_width() // 2, 145))
+        # Secreto: una silueta pasa frente a la cámara
+        if fantasma_cam == camara_seleccionada and tiempo_juego() < fantasma_hasta:
+            sombra = pygame.Surface((90, 230), pygame.SRCALPHA)
+            pygame.draw.ellipse(sombra, (0, 0, 0, 170), (25, 0, 40, 46))
+            pygame.draw.rect(sombra, (0, 0, 0, 170), (15, 44, 60, 120), border_radius=10)
+            pygame.draw.rect(sombra, (0, 0, 0, 170), (22, 160, 18, 70))
+            pygame.draw.rect(sombra, (0, 0, 0, 170), (50, 160, 18, 70))
+            pantalla_camaras.blit(sombra, (560 + int((fantasma_hasta - tiempo_juego()) * 80), 230))
+            if int(tiempo_juego() * 10) % 2 == 0:
+                lbl_f = fuente_grande.render("SALIDA", True, (200, 30, 30))
+                pantalla_camaras.blit(lbl_f, (460 - lbl_f.get_width() // 2, 470))
 
         # Posicionamiento calibrado de animatrónicos en el feed
         if camara_seleccionada == "CAM_01":
@@ -1768,7 +1925,7 @@ def partir_texto(texto, fuente, ancho_max):
     return lineas
 
 def dibujar_panel_llamada():
-    lista_actual = DIALOGOS_NOCHES.get(noche_actual, DIALOGOS_NOCHES[1])
+    lista_actual = llamada_lista
     if llamada_activa and not llamada_muteada and not en_apagon and indice_dialogo < len(lista_actual):
         rect_caja = pygame.Rect(40, 20, 720, 82)
         s_caja = pygame.Surface((rect_caja.width, rect_caja.height), pygame.SRCALPHA)
@@ -1807,7 +1964,7 @@ def dibujar_menu_principal():
     txt_crt_info = fuente_cam.render(f"[F1] POST-PROCESADO CRT: {'ACTIVO' if crt_activo else 'OFF'}", True, (100, 180, 140))
     pantalla.blit(txt_crt_info, (400, 145))
 
-    estrellas = (1 if (noche_desbloqueada >= 5 or juego_completado_5_noches) else 0) + (1 if record_20_20_20_20 else 0)
+    estrellas = sum([juego_completado_5_noches, final_verdadero_visto, noche6_superada, record_20_20_20_20])
     for i in range(estrellas):
         sx = 400 + i * 50
         sy = 175
@@ -1817,57 +1974,22 @@ def dibujar_menu_principal():
         txt_rec = fuente_cam.render("★ RÉCORD 20/20/20/20 COMPLETADO ★", True, (255, 215, 50))
         pantalla.blit(txt_rec, (400 + estrellas * 55, 180))
 
-    opciones = []
     if evidencias:
-        txt_ev = fuente_cam.render(f"PRUEBAS ENCONTRADAS: {len(evidencias)}/4", True, (255, 210, 90))
+        txt_ev = fuente_cam.render(f"PRUEBAS: {len(evidencias)}/4   LOGROS: {len(progreso.logros)}/{len(LOGROS)}", True, (255, 210, 90))
         pantalla.blit(txt_ev, (760, 180))
-
-    rect_nuevo = pygame.Rect(400, 215, 340, 55)
-    pygame.draw.rect(pantalla, (18, 24, 28), rect_nuevo, border_radius=6)
-    pygame.draw.rect(pantalla, (40, 160, 110), rect_nuevo, 2)
-    txt_n = fuente_grande.render("NUEVO JUEGO", True, (255, 255, 255))
-    pantalla.blit(txt_n, (rect_nuevo.x + 25, rect_nuevo.y + 12))
-    opciones.append(("NUEVO", rect_nuevo, True))
-
-    rect_cont = pygame.Rect(400, 280, 340, 55)
-    desbloq_cont = (noche_desbloqueada > 1)
-    pygame.draw.rect(pantalla, (18, 24, 28) if desbloq_cont else (15, 18, 20), rect_cont, border_radius=6)
-    pygame.draw.rect(pantalla, (40, 160, 220) if desbloq_cont else (45, 55, 60), rect_cont, 2)
-    color_cont = (255, 255, 255) if desbloq_cont else (90, 100, 105)
-    txt_c = fuente_grande.render(f"CONTINUAR (N.{noche_desbloqueada})", True, color_cont)
-    pantalla.blit(txt_c, (rect_cont.x + 25, rect_cont.y + 12))
-    opciones.append(("CONTINUAR", rect_cont, desbloq_cont))
-
-    rect_cust = pygame.Rect(400, 345, 340, 55)
     desbloq_cust = (noche_desbloqueada >= 5 or juego_completado_5_noches)
-    pygame.draw.rect(pantalla, (25, 20, 18) if desbloq_cust else (15, 18, 20), rect_cust, border_radius=6)
-    pygame.draw.rect(pantalla, (220, 100, 40) if desbloq_cust else (45, 55, 60), rect_cust, 2)
-    color_cu = (255, 255, 255) if desbloq_cust else (90, 100, 105)
-    txt_cu = fuente_grande.render("CUSTOM NIGHT", True, color_cu)
-    pantalla.blit(txt_cu, (rect_cust.x + 25, rect_cust.y + 12))
-    opciones.append(("CUSTOM", rect_cust, desbloq_cust))
+    items = [("NUEVO", "NUEVO JUEGO", (40, 160, 110), True),
+             ("CONTINUAR", f"CONTINUAR (N.{min(noche_desbloqueada, 5)})", (40, 160, 220), noche_desbloqueada > 1)]
+    if noche6_desbloqueada:
+        items.append(("NOCHE6", "NOCHE 6", (220, 50, 50), True))
+    items += [("CUSTOM", "CUSTOM NIGHT", (220, 100, 40), desbloq_cust),
+              ("EXTRAS", "EXTRAS", (200, 170, 70), True),
+              ("AJUSTES", "AJUSTES", (110, 130, 150), True),
+              ("SALIR", "SALIR", (160, 40, 40), True)]
+    opciones = boton_lista(items, 400, 212, 62 if len(items) > 6 else 68)
 
-    rect_archivo = pygame.Rect(400, 410, 340, 55)
-    desbloq_arch = cinta_disponible(1)
-    pygame.draw.rect(pantalla, (22, 20, 14) if desbloq_arch else (15, 18, 20), rect_archivo, border_radius=6)
-    pygame.draw.rect(pantalla, (200, 170, 70) if desbloq_arch else (45, 55, 60), rect_archivo, 2)
-    txt_ar = fuente_grande.render("ARCHIVO 1982", True, (255, 240, 200) if desbloq_arch else (90, 100, 105))
-    pantalla.blit(txt_ar, (rect_archivo.x + 25, rect_archivo.y + 12))
-    opciones.append(("ARCHIVO", rect_archivo, desbloq_arch))
-
-    rect_ajustes = pygame.Rect(400, 475, 340, 55)
-    pygame.draw.rect(pantalla, (18, 22, 28), rect_ajustes, border_radius=6)
-    pygame.draw.rect(pantalla, (110, 130, 150), rect_ajustes, 2)
-    txt_aj = fuente_grande.render("AJUSTES", True, (220, 230, 240))
-    pantalla.blit(txt_aj, (rect_ajustes.x + 25, rect_ajustes.y + 12))
-    opciones.append(("AJUSTES", rect_ajustes, True))
-
-    rect_salir = pygame.Rect(400, 540, 340, 50)
-    pygame.draw.rect(pantalla, (20, 16, 16), rect_salir, border_radius=6)
-    pygame.draw.rect(pantalla, (160, 40, 40), rect_salir, 2)
-    txt_s = fuente_grande.render("SALIR", True, (240, 180, 180))
-    pantalla.blit(txt_s, (rect_salir.x + 25, rect_salir.y + 10))
-    opciones.append(("SALIR", rect_salir, True))
+    txt_ver = fuente_cam.render(f"v{VERSION}", True, (70, 80, 85))
+    pantalla.blit(txt_ver, (ANCHO_VENTANA - txt_ver.get_width() - 12, ALTO_VENTANA - 22))
 
     for _ in range(400):
         rx = random.randint(0, ANCHO_VENTANA)
@@ -1878,8 +2000,17 @@ def dibujar_menu_principal():
 
 def dibujar_menu_custom():
     pantalla.fill((12, 14, 16))
-    txt_t = fuente_titulo.render("CONFIGURACIÓN DE ANIMATRÓNICOS", True, (240, 140, 40))
-    pantalla.blit(txt_t, (ANCHO_VENTANA//2 - txt_t.get_width()//2, 50))
+    txt_t = fuente_titulo.render("CUSTOM NIGHT", True, (240, 140, 40))
+    pantalla.blit(txt_t, (ANCHO_VENTANA//2 - txt_t.get_width()//2, 40))
+    if desafio_elegido:
+        sub = f"{T('DESAFÍO')}: {T(desafio_elegido['nombre'])}  //  {T(desafio_elegido['desc'])}"
+        color_sub = (240, 200, 90)
+    else:
+        sub = T("Configura la IA de cada uno (0 a 20) o elige un desafío abajo.")
+        color_sub = (150, 160, 165)
+    for k, linea in enumerate(partir_texto(sub, fuente_pequeña, 1000)[:2]):
+        s_ = fuente_pequeña.render(linea, True, color_sub)
+        pantalla.blit(s_, (ANCHO_VENTANA // 2 - s_.get_width() // 2, 105 + k * 20))
 
     animatronicos = ["Barnaby", "Silas", "Penny", "Rusty Bunny"]
     controles = []
@@ -1887,14 +2018,14 @@ def dibujar_menu_custom():
     for i, nombre in enumerate(animatronicos):
         x = 140 + i * 250
         y = 180
-        rect_card = pygame.Rect(x, y, 200, 260)
+        rect_card = pygame.Rect(x, y, 200, 250)
         pygame.draw.rect(pantalla, (20, 24, 28), rect_card, border_radius=8)
         pygame.draw.rect(pantalla, (50, 70, 85), rect_card, 2)
 
         txt_n = fuente_pequeña.render(nombre, True, (220, 230, 240))
         pantalla.blit(txt_n, (x + 100 - txt_n.get_width()//2, y + 20))
 
-        val = ia_custom[nombre]
+        val = (desafio_elegido["ia"] if desafio_elegido else ia_custom)[nombre]
         txt_val = fuente_grande.render(str(val), True, (255, 255, 255))
         pantalla.blit(txt_val, (x + 100 - txt_val.get_width()//2, y + 90))
 
@@ -1909,7 +2040,24 @@ def dibujar_menu_custom():
 
         controles.append((nombre, rect_menos, rect_mas))
 
-    rect_start = pygame.Rect(ANCHO_VENTANA//2 - 140, 510, 280, 55)
+    # Desafíos
+    botones_desafio = []
+    pos_m = pygame.mouse.get_pos()
+    for i, d_ in enumerate(DESAFIOS):
+        rb = pygame.Rect(62 + i * 218, 450, 208, 44)
+        elegido = desafio_elegido is d_
+        hecho = d_["id"] in progreso.stats["desafios"]
+        pygame.draw.rect(pantalla, (50, 38, 14) if elegido else ((28, 30, 34) if rb.collidepoint(pos_m) else (18, 20, 24)), rb, border_radius=5)
+        pygame.draw.rect(pantalla, (240, 190, 70) if elegido else (90, 80, 60), rb, 2, border_radius=5)
+        etiqueta = ("★ " if hecho else "") + d_["nombre"]
+        s_ = fuente_cam.render(etiqueta, True, (255, 230, 150) if (elegido or hecho) else (200, 200, 200))
+        pantalla.blit(s_, (rb.centerx - s_.get_width() // 2, rb.centery - s_.get_height() // 2))
+        botones_desafio.append((d_, rb))
+    hechos = sum(1 for d_ in DESAFIOS if d_["id"] in progreso.stats["desafios"])
+    s_ = fuente_cam.render(f"DESAFÍOS SUPERADOS: {hechos}/{len(DESAFIOS)}", True, (150, 140, 110))
+    pantalla.blit(s_, (ANCHO_VENTANA // 2 - s_.get_width() // 2, 500))
+
+    rect_start = pygame.Rect(ANCHO_VENTANA//2 - 140, 525, 280, 55)
     pygame.draw.rect(pantalla, (25, 120, 60), rect_start, border_radius=6)
     txt_start = fuente_grande.render("INICIAR NOCHE", True, (255, 255, 255))
     pantalla.blit(txt_start, (rect_start.x + 35, rect_start.y + 12))
@@ -1919,7 +2067,7 @@ def dibujar_menu_custom():
     txt_v = fuente_pequeña.render("< VOLVER", True, (220, 220, 220))
     pantalla.blit(txt_v, (rect_volver.x + 20, rect_volver.y + 10))
 
-    return controles, rect_start, rect_volver
+    return controles, rect_start, rect_volver, botones_desafio
 
 def dibujar_pantalla_victoria(t_transcurrido):
     pantalla.fill((4, 6, 8))
@@ -2049,6 +2197,8 @@ OPCIONES_AJUSTES = [
     ("escalado", "ESCALADO DE IMAGEN", "opciones", [("ajustar", "AJUSTAR (SIN DEFORMAR)"), ("estirar", "ESTIRAR (SIN BORDES)")]),
     ("vel_giro", "VELOCIDAD DE GIRO EN LA OFICINA", "barra", (50, 200, 10, "%")),
     ("mostrar_fps", "MOSTRAR FPS", "si_no", None),
+    ("dificultad", "DIFICULTAD (HISTORIA)", "opciones", [(k, v["nombre"]) for k, v in DIFICULTADES.items()]),
+    ("idioma", "IDIOMA / LANGUAGE", "opciones", [("es", "ESPAÑOL"), ("en", "ENGLISH")]),
 ]
 AYUDA_AJUSTES = {
     "escalado": "AJUSTAR mantiene la imagen sin deformar (puede dejar bordes negros). ESTIRAR llena toda la pantalla.",
@@ -2056,8 +2206,10 @@ AYUDA_AJUSTES = {
     "crt": "Líneas de monitor viejo y desplazamiento de color. Apagarlo mejora el rendimiento.",
     "vel_giro": "Qué tan rápido gira la vista al llevar el mouse a los bordes de la oficina.",
     "pantalla_completa": "También se cambia en cualquier momento con F11.",
+    "dificultad": "Se aplica a las noches 1 a 6 desde la próxima noche. HISTORIA: más fácil, para ver la historia.",
+    "idioma": "Cambia el idioma de todo el juego.",
 }
-Y_AJUSTES, ALTO_FILA_AJUSTES = 118, 44
+Y_AJUSTES, ALTO_FILA_AJUSTES = 108, 38
 X_CONTROL, ANCHO_CONTROL = 640, 400
 
 def cambiar_ajuste(clave, direccion=1, valor=None):
@@ -2075,6 +2227,8 @@ def cambiar_ajuste(clave, direccion=1, valor=None):
         AJUSTES[clave] = valores[(valores.index(AJUSTES[clave]) + direccion) % len(valores)]
     if clave == "crt":
         crt_activo = AJUSTES["crt"]
+    if clave == "idioma":
+        aplicar_idioma()
     if clave in ("pantalla_completa", "escalado"):
         ventana.aplicar_modo()
     if clave in ("vol_general", "vol_musica", "vol_voces"):
@@ -2160,6 +2314,7 @@ def salir_de_ajustes():
 # Modo desarrollador (código secreto + atajos + panel de información)
 # -------------------------------------------------------------
 _buffer_codigo = ""
+_buffer_digitos = ""
 dev_congelados = False       # F6: los animatrónicos no se mueven
 dev_panel = True             # F10: mostrar u ocultar el panel
 dev_aviso, dev_t_aviso = "", 0.0
@@ -2168,20 +2323,29 @@ dev_jumpscare_idx = 0
 def dev_avisar(texto):
     global dev_aviso, dev_t_aviso
     dev_aviso, dev_t_aviso = texto, tiempo_juego() + 2.5
-    ventana.capa_extra = dibujar_capa_desarrollo
+    ventana.capa_extra = dibujar_capas_superiores
 
 def revisar_eventos_desarrollo(eventos):
     """Se llama con todos los eventos del juego: detecta el código secreto y los atajos F4-F10."""
     global _buffer_codigo, MODO_DESARROLLO, dev_congelados, dev_panel, dev_jumpscare_idx
     global noche_desbloqueada, juego_completado_5_noches, evidencias, tiempo_inicio
+    global _buffer_digitos
     for e in eventos:
         if e.type != pygame.KEYDOWN:
             continue
+        if e.unicode and e.unicode.isdigit() and estado_actual in (ESTADO_MENU, ESTADO_EXTRAS):
+            _buffer_digitos = (_buffer_digitos + e.unicode)[-4:]
+            if _buffer_digitos == "0303":
+                _buffer_digitos = ""
+                progreso.desbloquear("cinta_cero")
+                reproducir_sonido(sfx_glitch_8bit)
+                mostrar_relato(CINTA_SECRETA["titulo"], CINTA_SECRETA["lineas"], ir_al_menu, (220, 60, 60))
         if e.unicode and e.unicode.isalnum():
             _buffer_codigo = (_buffer_codigo + e.unicode.lower())[-len(CODIGO_DESARROLLO):]
             if _buffer_codigo == CODIGO_DESARROLLO.lower():
                 _buffer_codigo = ""
                 MODO_DESARROLLO = not MODO_DESARROLLO
+                progreso.bloqueado = MODO_DESARROLLO
                 if not MODO_DESARROLLO:
                     dev_congelados = False
                 reproducir_sonido(sfx_ir_lock)
@@ -2191,7 +2355,8 @@ def revisar_eventos_desarrollo(eventos):
             continue
         en_noche = estado_actual == ESTADO_JUEGO and not juego_terminado and not en_jumpscare and not pausado
         if e.key == pygame.K_F4:
-            noche_desbloqueada, juego_completado_5_noches = 5, True
+            global noche6_desbloqueada
+            noche_desbloqueada, juego_completado_5_noches, noche6_desbloqueada = 5, True, True
             dev_avisar("NOCHES Y CINTAS DESBLOQUEADAS (SOLO ESTA SESIÓN)")
         elif e.key == pygame.K_F5:
             evidencias = set() if len(evidencias) == 4 else {1, 2, 3, 4}
@@ -2203,7 +2368,7 @@ def revisar_eventos_desarrollo(eventos):
             tiempo_inicio -= DURACION_HORA_SEGUNDOS
             dev_avisar("+1 HORA")
         elif e.key == pygame.K_F8 and en_noche:
-            nombre = ["Barnaby", "Silas", "Penny", "Rusty Bunny"][dev_jumpscare_idx % 4]
+            nombre = ["Barnaby", "Silas", "Penny", "Rusty Bunny", "Unidad 0"][dev_jumpscare_idx % 5]
             dev_jumpscare_idx += 1
             iniciar_jumpscare(nombre, f"PRUEBA DE JUMPSCARE: {nombre.upper()}")
         elif e.key == pygame.K_F9 and estado_actual == ESTADO_MINIJUEGO and minijuego_actual and minijuego_actual.fase == "juego":
@@ -2212,18 +2377,17 @@ def revisar_eventos_desarrollo(eventos):
             dev_avisar("CINTA GANADA (CON PRUEBA)")
         elif e.key == pygame.K_F10:
             dev_panel = not dev_panel
-            ventana.capa_extra = dibujar_capa_desarrollo
+            ventana.capa_extra = dibujar_capas_superiores
     if MODO_DESARROLLO:
-        ventana.capa_extra = dibujar_capa_desarrollo
+        ventana.capa_extra = dibujar_capas_superiores
 
 def dibujar_capa_desarrollo(sup):
     ahora_dev = tiempo_juego()
     if not MODO_DESARROLLO and ahora_dev > dev_t_aviso:
-        ventana.capa_extra = None
         return
     f = fuente_cam
     if MODO_DESARROLLO and dev_panel:
-        lineas = [("MODO DESARROLLADOR  //  escribe '" + CODIGO_DESARROLLO + "' para salir", (255, 90, 90)),
+        lineas = [("MODO DESARROLLADOR  //  escribe '" + CODIGO_DESARROLLO + "' para salir  //  logros desactivados", (255, 90, 90)),
                   ("F2 6 AM   F3 recargar   F4 desbloquear   F5 pruebas   F6 congelar", (220, 220, 220)),
                   ("F7 +1 hora   F8 jumpscare   F9 ganar cinta   F10 ocultar panel", (220, 220, 220))]
         if estado_actual == ESTADO_JUEGO:
@@ -2231,6 +2395,10 @@ def dibujar_capa_desarrollo(sup):
             for a in (barnaby, silas, penny, bunny):
                 estado_a = "CONGELADO" if dev_congelados else f"IA {a.nivel_ia}+{a.bonus_hora}"
                 lineas.append((f"{a.nombre.upper():12s} {a.sala():16s} {estado_a}", (160, 200, 230)))
+            if unidad0.activa:
+                lineas.append((f"UNIDAD 0     {unidad0.sala():16s} sin vigilar {unidad0.sin_vigilar:.1f}/{unidad0.limite:.0f}s", (230, 230, 255)))
+            if modificadores:
+                lineas.append(("DESAFÍO: " + ", ".join(modificadores), (240, 200, 90)))
         elif estado_actual == ESTADO_MINIJUEGO and minijuego_actual:
             lineas.append((f"CINTA {minijuego_numero}  fase: {minijuego_actual.fase}  pos: {int(minijuego_actual.px)},{int(minijuego_actual.py)}", (120, 230, 160)))
         alto = 8 + 17 * len(lineas)
@@ -2250,14 +2418,257 @@ def dibujar_capa_desarrollo(sup):
         sup.blit(txt, (caja.x + 15, caja.y + 8))
 
 ventana.al_recibir_eventos = revisar_eventos_desarrollo
-if MODO_DESARROLLO:
-    ventana.capa_extra = dibujar_capa_desarrollo
+
+# -------------------------------------------------------------
+# Estadísticas, logros, EXTRAS y créditos
+# -------------------------------------------------------------
+uso_puerta_noche = False      # Para el logro "Puertas abiertas"
+
+def registrar_fin_de_noche():
+    """Se llama a las 6 AM: suma estadísticas y revisa logros de la noche."""
+    progreso.sumar("noches_superadas")
+    progreso.stats["bateria_final_suma"] += bateria
+    progreso.stats["noches_con_bateria"] += 1
+    progreso.stats["mejor_bateria"] = max(progreso.stats["mejor_bateria"], bateria)
+    if noche_actual == 1:
+        progreso.desbloquear("primer_turno")
+    if noche_actual == 5:
+        progreso.desbloquear("fin_contrato")
+        if progreso.stats["muertes_partida"] == 0:
+            progreso.desbloquear("intocable")
+    if noche_actual == 6:
+        progreso.desbloquear("horas_extra")
+    if noche_actual == "CUSTOM" and all(v == 20 for v in ia_custom.values()):
+        progreso.desbloquear("veinte")
+    if noche_actual != "CUSTOM" and noche_actual != 1:
+        if not uso_puerta_noche:
+            progreso.desbloquear("puertas_abiertas")
+        if bateria > 50:
+            progreso.desbloquear("ahorro")
+    revisar_fin_de_noche_extra()
+
+def revisar_fin_de_noche_extra():
+    global noche6_superada
+    if noche_actual == 6:
+        noche6_superada = True
+    if noche_actual == "CUSTOM" and desafio_elegido:
+        progreso.agregar_a_lista("desafios", desafio_elegido["id"])
+        if all(d_["id"] in progreso.stats["desafios"] for d_ in DESAFIOS):
+            progreso.desbloquear("turno_completo")
+
+def dibujar_capas_superiores(sup):
+    """Se dibuja encima de todo: avisos de logros y panel del modo desarrollador."""
+    dibujar_capa_desarrollo(sup)
+    dibujar_aviso_logro(sup)
+
+aviso_logro_actual, aviso_logro_hasta = None, 0.0
+
+def dibujar_aviso_logro(sup):
+    global aviso_logro_actual, aviso_logro_hasta
+    ahora_l = pygame.time.get_ticks() / 1000.0
+    if (aviso_logro_actual is None or ahora_l > aviso_logro_hasta) and progreso.avisos:
+        aviso_logro_actual = progreso.avisos.pop(0)
+        aviso_logro_hasta = ahora_l + 4.0
+        reproducir_sonido(sfx_campana_3, 0.5, 0.5)
+        guardar_progreso()
+    if aviso_logro_actual and ahora_l <= aviso_logro_hasta:
+        _, nombre, desc, _ = NOMBRES_LOGROS[aviso_logro_actual]
+        caja = pygame.Rect(sup.get_width() - 430, sup.get_height() - 190, 410, 70)
+        sup.fill((20, 16, 6), caja)
+        pygame.draw.rect(sup, (240, 200, 60), caja, 2)
+        pygame.draw.circle(sup, (240, 200, 60), (caja.x + 35, caja.centery), 18)
+        pygame.draw.circle(sup, (255, 240, 170), (caja.x + 35, caja.centery), 9)
+        sup.blit(fuente_cam.render("LOGRO DESBLOQUEADO", True, (240, 200, 60)), (caja.x + 65, caja.y + 10))
+        sup.blit(fuente_pequeña.render(T(nombre), True, (255, 255, 255)), (caja.x + 65, caja.y + 28))
+        sup.blit(fuente_cam.render(T(desc)[:52], True, (190, 190, 180)), (caja.x + 65, caja.y + 48))
+
+def boton_lista(items, x, y0, paso, ancho=340, alto=52):
+    """Dibuja una columna de botones. items = [(clave, texto, color, habilitado)]. Devuelve [(clave, rect, habilitado)]."""
+    salida = []
+    pos = pygame.mouse.get_pos()
+    for i, (clave, texto, color, habil) in enumerate(items):
+        rect = pygame.Rect(x, y0 + i * paso, ancho, alto)
+        hover = habil and rect.collidepoint(pos)
+        pygame.draw.rect(pantalla, (30, 34, 38) if hover else ((18, 22, 26) if habil else (14, 16, 18)), rect, border_radius=6)
+        pygame.draw.rect(pantalla, color if habil else (45, 55, 60), rect, 2, border_radius=6)
+        txt = fuente_grande.render(texto, True, (255, 255, 255) if habil else (90, 100, 105))
+        pantalla.blit(txt, (rect.x + 25, rect.centery - txt.get_height() // 2))
+        salida.append((clave, rect, habil))
+    return salida
+
+def dibujar_extras():
+    pantalla.fill((8, 10, 12))
+    txt = fuente_titulo.render("EXTRAS", True, (220, 230, 235))
+    pantalla.blit(txt, (ANCHO_VENTANA // 2 - txt.get_width() // 2, 70))
+    sub = fuente_pequeña.render(f"PRUEBAS {len(evidencias)}/4   //   LOGROS {len(progreso.logros)}/{len(LOGROS)}", True, (130, 160, 150))
+    pantalla.blit(sub, (ANCHO_VENTANA // 2 - sub.get_width() // 2, 130))
+    return boton_lista([("ARCHIVO", "ARCHIVO 1982", (200, 170, 70), cinta_disponible(1)),
+                        ("LOGROS", "LOGROS", (240, 200, 60), True),
+                        ("ESTADISTICAS", "ESTADÍSTICAS", (60, 180, 220), True),
+                        ("CREDITOS", "CRÉDITOS", (150, 130, 200), True),
+                        ("VOLVER", "VOLVER", (40, 160, 110), True)], ANCHO_VENTANA // 2 - 170, 200, 72)
+
+RECT_VOLVER_ABAJO = pygame.Rect(ANCHO_VENTANA // 2 - 140, 630, 280, 48)
+
+def dibujar_logros():
+    pantalla.fill((8, 10, 12))
+    txt = fuente_titulo.render("LOGROS", True, (240, 200, 60))
+    pantalla.blit(txt, (ANCHO_VENTANA // 2 - txt.get_width() // 2, 25))
+    sub = fuente_pequeña.render(f"{len(progreso.logros)} DE {len(LOGROS)} DESBLOQUEADOS", True, (170, 160, 120))
+    pantalla.blit(sub, (ANCHO_VENTANA // 2 - sub.get_width() // 2, 80))
+    for i, (id_l, nombre, desc, secreto) in enumerate(LOGROS):
+        col, fila = i % 2, i // 2
+        caja = pygame.Rect(40 + col * 570, 110 + fila * 57, 550, 50)
+        tiene = id_l in progreso.logros
+        pygame.draw.rect(pantalla, (26, 22, 10) if tiene else (16, 18, 20), caja, border_radius=5)
+        pygame.draw.rect(pantalla, (200, 165, 50) if tiene else (45, 50, 55), caja, 1, border_radius=5)
+        pygame.draw.circle(pantalla, (240, 200, 60) if tiene else (40, 44, 48), (caja.x + 26, caja.centery), 15)
+        if tiene:
+            pygame.draw.circle(pantalla, (255, 240, 170), (caja.x + 26, caja.centery), 7)
+        if secreto and not tiene:
+            nombre, desc = "???", "Logro secreto."
+        pantalla.blit(fuente_pequeña.render(nombre, True, (255, 250, 230) if tiene else (130, 135, 140)), (caja.x + 52, caja.y + 7))
+        pantalla.blit(fuente_cam.render(desc, True, (190, 185, 170) if tiene else (95, 100, 105)), (caja.x + 52, caja.y + 28))
+    dibujar_boton_menu(RECT_VOLVER_ABAJO, "[ESC] VOLVER", (40, 160, 110))
+
+def dibujar_resumen():
+    st = progreso.stats
+    pantalla.fill((6, 8, 9))
+    titulo = "RESUMEN DE TU TURNO" if resumen_volver_a == ESTADO_CREDITOS else "ESTADÍSTICAS"
+    txt = fuente_titulo.render(titulo, True, (220, 230, 235))
+    pantalla.blit(txt, (60, 30))
+    pantalla.blit(fuente_pequeña.render("ENSAMBLADORA DUNMORE S.A. // REGISTRO DEL GUARDIA NOCTURNO", True, (110, 140, 130)), (62, 88))
+
+    letra, titulo_nota = progreso.nota(len(evidencias))
+    caja = pygame.Rect(800, 25, 360, 110)
+    pygame.draw.rect(pantalla, (18, 22, 24), caja, border_radius=8)
+    pygame.draw.rect(pantalla, (240, 200, 60), caja, 2, border_radius=8)
+    s_ = fuente_reloj_6am.render(letra, True, (240, 200, 60))
+    pantalla.blit(s_, (caja.x + 20, caja.y + 12))
+    pantalla.blit(fuente_cam.render("CALIFICACIÓN", True, (160, 150, 120)), (caja.x + 130, caja.y + 30))
+    pantalla.blit(fuente_pequeña.render(titulo_nota, True, (255, 255, 255)), (caja.x + 130, caja.y + 52))
+
+    def columna(x, y, encabezado, filas):
+        pantalla.blit(fuente_panel.render(encabezado, True, (90, 220, 140)), (x, y))
+        pygame.draw.line(pantalla, (40, 80, 60), (x, y + 26), (x + 330, y + 26), 1)
+        for i, (nombre, valor) in enumerate(filas):
+            pantalla.blit(fuente_pequeña.render(nombre, True, (180, 190, 185)), (x, y + 38 + i * 26))
+            v = fuente_pequeña.render(str(valor), True, (255, 255, 255))
+            pantalla.blit(v, (x + 330 - v.get_width(), y + 38 + i * 26))
+
+    columna(60, 160, "GENERAL", [
+        ("Noches superadas", st["noches_superadas"]),
+        ("Tiempo de turno", formato_tiempo(st["tiempo_jugado"])),
+        ("Muertes", st["muertes"]),
+        ("Batería promedio a las 6 AM", f"{progreso.bateria_promedio():.0f}%"),
+        ("Mejor batería a las 6 AM", f"{st['mejor_bateria']:.0f}%"),
+        ("Pruebas encontradas", f"{len(evidencias)}/4"),
+        ("Cintas completadas", st["cintas_completadas"]),
+        ("Intentos fallidos en cintas", st["cintas_fallos"]),
+        ("Logros", f"{len(progreso.logros)}/{len(LOGROS)}"),
+    ])
+    columna(440, 160, "DEFENSAS", [
+        ("Compuertas cerradas", st["puertas_cerradas"]),
+        ("Persianas bajadas", st["persianas"]),
+        ("Veces que usaste la linterna", st["linterna"]),
+        ("Cámaras revisadas", st["camaras_vistas"]),
+        ("Señuelos de audio", st["senuelos"]),
+        ("Reinicios de sistemas", st["reinicios_sistema"]),
+        ("Penny frenada en la puerta", st["penny_bloqueada"]),
+        ("Rusty frenado en la ventana", st["bunny_rechazado"]),
+        ("Barnaby encandilado", st["barnaby_cegado"]),
+        ("Silas atrapado en ductos", st["silas_atrapado"]),
+        ("Unidad 0 rechazada", st["unidad0_rechazada"]),
+    ])
+    causas = ["Barnaby", "Penny", "Rusty Bunny", "Silas", "Unidad 0", "Apagón", "Asfixia"]
+    columna(820, 160, "MUERTES POR", [(c.upper(), st["muertes_por"].get(c, 0)) for c in causas])
+    pantalla.blit(fuente_cam.render("Las estadísticas se acumulan en todas tus partidas.", True, (100, 110, 105)), (60, 470))
+    texto_boton = "[ESPACIO] CRÉDITOS" if resumen_volver_a == ESTADO_CREDITOS else "[ESC] VOLVER"
+    dibujar_boton_menu(RECT_VOLVER_ABAJO, texto_boton, (40, 160, 110))
+
+def abrir_resumen(volver_a):
+    global estado_actual, resumen_volver_a
+    resumen_volver_a = volver_a
+    estado_actual = ESTADO_RESUMEN
+
+def abrir_creditos(volver_a):
+    global estado_actual, creditos_volver_a, t_creditos
+    creditos_volver_a, t_creditos = volver_a, tiempo_juego()
+    estado_actual = ESTADO_CREDITOS
+
+def dibujar_creditos():
+    pantalla.fill((3, 3, 4))
+    t = tiempo_juego() - t_creditos
+    y = ALTO_VENTANA - t * 55
+    for texto, tipo in CREDITOS:
+        fuente, color = {"titulo": (fuente_grande, (230, 60, 60)), "seccion": (fuente_pequeña, (110, 140, 130)),
+                         "nombre": (fuente_media, (235, 235, 230)), "nota": (fuente_cam, (120, 120, 120))}.get(tipo, (fuente_cam, (0, 0, 0)))
+        if texto and -50 < y < ALTO_VENTANA + 10:
+            s_ = fuente.render(texto, True, color)
+            pantalla.blit(s_, (ANCHO_VENTANA // 2 - s_.get_width() // 2, int(y)))
+        y += 48 if tipo == "titulo" else 36
+    return y < 120   # True cuando terminó de pasar todo
+
+def fin_del_juego_y_resumen():
+    """Después del relato final: estadísticas y créditos."""
+    abrir_resumen(ESTADO_CREDITOS)
+
+# -------------------------------------------------------------
+# Tutorial de la noche 1: resalta lo que menciona la llamada
+# -------------------------------------------------------------
+# índice de la línea de la llamada -> (objetivo, texto)
+TUTORIAL_NOCHE1 = {
+    1: ("monitor", "[ESPACIO] O CLIC: ABRIR LAS CÁMARAS"),
+    3: ("puerta", "[A] O CLIC: COMPUERTA"),
+    4: ("persiana", "MANTÉN APRETADO: PERSIANA"),
+    5: ("pasillo", "MANTÉN [F] O CLIC DERECHO: LINTERNA"),
+    6: ("techo", "[W]: MIRAR AL TECHO  //  [S]: VOLVER"),
+    7: ("terminal", "[M] O CLIC: PANEL DE MANTENIMIENTO"),
+}
+
+def dibujar_tutorial():
+    if noche_actual != 1 or not llamada_activa or llamada_muteada or llamada_equivocada:
+        return
+    paso = TUTORIAL_NOCHE1.get(indice_dialogo)
+    if not paso or monitor_abierto or mirando_techo or panel_mantenimiento_abierto:
+        return
+    objetivo, texto = paso
+    oficina = {"puerta": RECT_BTN_PUERTA_IZQ, "persiana": RECT_BTN_PERSIANA,
+               "pasillo": pygame.Rect(780, 170, 240, 250), "terminal": pygame.Rect(480, 360, 65, 85)}
+    pulso = 2 + int(2 * (1 + math.sin(tiempo_juego() * 6)))
+    color = (255, 220, 60)
+    if objetivo in oficina:
+        r_ = oficina[objetivo].move(-int(cam_x), 0).inflate(14, 14)
+        if r_.right < 0 or r_.left > ANCHO_VENTANA:
+            derecha = r_.left > ANCHO_VENTANA
+            flecha = "LLEVA EL MOUSE AL BORDE  >>" if derecha else "<<  LLEVA EL MOUSE AL BORDE"
+            s_ = fuente_pequeña.render(flecha, True, color)
+            pantalla.blit(s_, (ANCHO_VENTANA - s_.get_width() - 30 if derecha else 30, ALTO_VENTANA // 2))
+        else:
+            pygame.draw.rect(pantalla, color, r_, pulso, border_radius=6)
+            s_ = fuente_pequeña.render(texto, True, color)
+            x_ = max(10, min(ANCHO_VENTANA - s_.get_width() - 10, r_.centerx - s_.get_width() // 2))
+            y_ = r_.bottom + 8 if r_.bottom + 30 < ALTO_VENTANA - 110 else r_.top - 26
+            pantalla.fill((0, 0, 0), (x_ - 6, y_ - 3, s_.get_width() + 12, s_.get_height() + 6))
+            pantalla.blit(s_, (x_, y_))
+    else:
+        r_ = pygame.Rect(ANCHO_VENTANA // 2 - 200, ALTO_VENTANA - 45, 400, 35) if objetivo == "monitor" else pygame.Rect(ANCHO_VENTANA // 2 - 150, 105, 300, 30)
+        pygame.draw.rect(pantalla, color, r_.inflate(10, 10), pulso, border_radius=8)
+        s_ = fuente_pequeña.render(texto, True, color)
+        y_ = r_.top - 34 if objetivo == "monitor" else r_.y + 6
+        pantalla.fill((0, 0, 0), (ANCHO_VENTANA // 2 - s_.get_width() // 2 - 6, y_ - 3, s_.get_width() + 12, s_.get_height() + 6))
+        pantalla.blit(s_, (ANCHO_VENTANA // 2 - s_.get_width() // 2, y_))
 
 # -------------------------------------------------------------
 # 17. Bucle Principal de Juego
 # -------------------------------------------------------------
+ventana.capa_extra = dibujar_capas_superiores   # Avisos de logros y panel de desarrollador
+JUEGO_LISTO = True   # (lo usan las pruebas automáticas)
 while True:
     dt = min(reloj.tick(60) / 1000.0, 0.1)
+    if progreso.sin_guardar:
+        progreso.sin_guardar = False
+        guardar_progreso()
     if not pausado:
         reloj_juego += dt
         actualizar_audio_continuo()
@@ -2280,9 +2691,14 @@ while True:
                     if rect.collidepoint(mouse_pos) and habilitado:
                         reproducir_sonido(sfx_linterna)
                         if tipo == "NUEVO":
+                            progreso.stats["muertes_partida"] = 0
                             mostrar_relato(INTRO_JUEGO["titulo"], INTRO_JUEGO["lineas"], lambda: presentar_noche(1))
+                        elif tipo == "NOCHE6":
+                            presentar_noche(6)
+                        elif tipo == "EXTRAS":
+                            estado_actual = ESTADO_EXTRAS
                         elif tipo == "CONTINUAR":
-                            presentar_noche(noche_desbloqueada)
+                            presentar_noche(min(noche_desbloqueada, 5))
                         elif tipo == "ARCHIVO":
                             estado_actual = ESTADO_ARCHIVO
                         elif tipo == "CUSTOM":
@@ -2300,7 +2716,7 @@ while True:
         continue
 
     elif estado_actual == ESTADO_CUSTOM:
-        controles_ia, btn_iniciar, btn_volver = dibujar_menu_custom()
+        controles_ia, btn_iniciar, btn_volver, botones_desafio = dibujar_menu_custom()
         for evento in pygame.event.get():
             if evento.type == pygame.QUIT:
                 pygame.quit()
@@ -2315,7 +2731,14 @@ while True:
                     estado_actual = ESTADO_MENU
                 if btn_iniciar.collidepoint(mouse_pos):
                     comenzar_noche("CUSTOM")
+                for d_, rb in botones_desafio:
+                    if rb.collidepoint(mouse_pos):
+                        desafio_elegido = None if desafio_elegido is d_ else d_
+                        reproducir_sonido(sfx_linterna)
                 for nombre, r_menos, r_mas in controles_ia:
+                    if (r_menos.collidepoint(mouse_pos) or r_mas.collidepoint(mouse_pos)) and desafio_elegido:
+                        ia_custom.update(desafio_elegido["ia"])   # Parte de los valores del desafío
+                        desafio_elegido = None
                     if r_menos.collidepoint(mouse_pos):
                         ia_custom[nombre] = max(0, ia_custom[nombre] - 1)
                         guardar_progreso()
@@ -2357,6 +2780,8 @@ while True:
                 tiempo_inicio_periodico = tiempo_juego()
             elif isinstance(noche_actual, int) and noche_actual < 5:
                 iniciar_minijuego(noche_actual, "NOCHE")
+            elif noche_actual == 6:
+                mostrar_relato(FINAL_NOCHE6["titulo"], FINAL_NOCHE6["lineas"], fin_del_juego_y_resumen, (220, 60, 60))
             else:
                 estado_actual = ESTADO_MENU
 
@@ -2378,7 +2803,15 @@ while True:
             if (evento.type == pygame.MOUSEBUTTONDOWN and evento.button == 1) or (evento.type == pygame.KEYDOWN and evento.key in [pygame.K_SPACE, pygame.K_RETURN]):
                 if tiempo_juego() - tiempo_inicio_periodico >= 1.5:
                     color_final = (255, 210, 90) if final_actual is FINAL_VERDADERO else (220, 70, 70)
-                    mostrar_relato(final_actual["titulo"], final_actual["lineas"], ir_al_menu, color_final)
+                    if final_actual is FINAL_VERDADERO and not final_verdadero_visto:
+                        final_verdadero_visto = True
+                        noche6_desbloqueada = True
+                        progreso.desbloquear("fin_del_turno")
+                        guardar_progreso()
+                    lineas_final = list(final_actual["lineas"])
+                    if final_actual is FINAL_VERDADERO:
+                        lineas_final += ["", "(NOCHE 6 DESBLOQUEADA EN EL MENÚ)"]
+                    mostrar_relato(final_actual["titulo"], lineas_final, fin_del_juego_y_resumen, color_final)
 
         aplicar_postprocesado_crt(dt, intensidad_aberracion=1)
         pygame.display.flip()
@@ -2399,9 +2832,16 @@ while True:
         minijuego_actual.actualizar(dt, eventos_mj, pygame.key.get_pressed())
         minijuego_actual.dibujar(pantalla)
         if minijuego_actual.terminado:
+            if not minijuego_actual.salteado:
+                progreso.stats["cintas_completadas"] += 1
+                progreso.stats["cintas_fallos"] += minijuego_actual.intentos
+                if minijuego_actual.prueba and minijuego_actual.intentos == 0:
+                    progreso.desbloquear("una_toma")
             if minijuego_actual.prueba and minijuego_numero not in evidencias:
                 evidencias.add(minijuego_numero)
-                guardar_progreso()
+            if len(evidencias) == 4:
+                progreso.desbloquear("archivista")
+            guardar_progreso()
             estado_actual = ESTADO_ARCHIVO if minijuego_origen == "ARCHIVO" else ESTADO_MENU
         aberracion_mj = 3 if minijuego_actual.flash > 0 else 1
         aplicar_postprocesado_crt(dt, intensidad_aberracion=aberracion_mj)
@@ -2439,8 +2879,8 @@ while True:
         pygame.display.flip()
         continue
 
-    elif estado_actual == ESTADO_ARCHIVO:
-        dibujar_archivo()
+    elif estado_actual == ESTADO_EXTRAS:
+        botones_ex = dibujar_extras()
         for evento in pygame.event.get():
             if evento.type == pygame.QUIT:
                 pygame.quit()
@@ -2448,9 +2888,81 @@ while True:
             if evento.type == pygame.KEYDOWN and evento.key == pygame.K_ESCAPE:
                 estado_actual = ESTADO_MENU
             if evento.type == pygame.MOUSEBUTTONDOWN and evento.button == 1:
+                for clave_b, rect_b, habil in botones_ex:
+                    if habil and rect_b.collidepoint(evento.pos):
+                        reproducir_sonido(sfx_linterna)
+                        if clave_b == "ARCHIVO":
+                            estado_actual = ESTADO_ARCHIVO
+                        elif clave_b == "LOGROS":
+                            estado_actual = ESTADO_LOGROS
+                        elif clave_b == "ESTADISTICAS":
+                            abrir_resumen(ESTADO_EXTRAS)
+                        elif clave_b == "CREDITOS":
+                            abrir_creditos(ESTADO_EXTRAS)
+                        else:
+                            estado_actual = ESTADO_MENU
+        aplicar_postprocesado_crt(dt, intensidad_aberracion=1)
+        pygame.display.flip()
+        continue
+
+    elif estado_actual == ESTADO_LOGROS:
+        dibujar_logros()
+        for evento in pygame.event.get():
+            if evento.type == pygame.QUIT:
+                pygame.quit()
+                sys.exit()
+            if (evento.type == pygame.KEYDOWN and evento.key == pygame.K_ESCAPE) or \
+               (evento.type == pygame.MOUSEBUTTONDOWN and evento.button == 1 and RECT_VOLVER_ABAJO.collidepoint(evento.pos)):
+                reproducir_sonido(sfx_linterna)
+                estado_actual = ESTADO_EXTRAS
+        aplicar_postprocesado_crt(dt, intensidad_aberracion=1)
+        pygame.display.flip()
+        continue
+
+    elif estado_actual == ESTADO_RESUMEN:
+        dibujar_resumen()
+        for evento in pygame.event.get():
+            if evento.type == pygame.QUIT:
+                pygame.quit()
+                sys.exit()
+            salir = (evento.type == pygame.KEYDOWN and evento.key in (pygame.K_ESCAPE, pygame.K_SPACE, pygame.K_RETURN)) or \
+                    (evento.type == pygame.MOUSEBUTTONDOWN and evento.button == 1 and RECT_VOLVER_ABAJO.collidepoint(evento.pos))
+            if salir:
+                reproducir_sonido(sfx_linterna)
+                if resumen_volver_a == ESTADO_CREDITOS:
+                    abrir_creditos(ESTADO_MENU)
+                else:
+                    estado_actual = resumen_volver_a
+        aplicar_postprocesado_crt(dt, intensidad_aberracion=1)
+        pygame.display.flip()
+        continue
+
+    elif estado_actual == ESTADO_CREDITOS:
+        terminaron = dibujar_creditos()
+        for evento in pygame.event.get():
+            if evento.type == pygame.QUIT:
+                pygame.quit()
+                sys.exit()
+            if (evento.type == pygame.KEYDOWN and evento.key not in (pygame.K_F1, pygame.K_F11)) or (evento.type == pygame.MOUSEBUTTONDOWN and evento.button == 1):
+                terminaron = True
+        if terminaron:
+            estado_actual = creditos_volver_a
+        aplicar_postprocesado_crt(dt, intensidad_aberracion=1)
+        pygame.display.flip()
+        continue
+
+    elif estado_actual == ESTADO_ARCHIVO:
+        dibujar_archivo()
+        for evento in pygame.event.get():
+            if evento.type == pygame.QUIT:
+                pygame.quit()
+                sys.exit()
+            if evento.type == pygame.KEYDOWN and evento.key == pygame.K_ESCAPE:
+                estado_actual = ESTADO_EXTRAS
+            if evento.type == pygame.MOUSEBUTTONDOWN and evento.button == 1:
                 if RECT_ARCHIVO_VOLVER.collidepoint(evento.pos):
                     reproducir_sonido(sfx_linterna)
-                    estado_actual = ESTADO_MENU
+                    estado_actual = ESTADO_EXTRAS
                 for n, rect in zip((1, 2, 3, 4), botones_archivo()):
                     if rect.collidepoint(evento.pos) and cinta_disponible(n):
                         reproducir_sonido(sfx_linterna)
@@ -2488,6 +3000,7 @@ while True:
                             AJUSTES[k] = v
                     crt_activo = AJUSTES["crt"]
                     ventana.aplicar_modo()
+                    aplicar_idioma()
                     reproducir_sonido(sfx_reboot_click)
                 for i, (clave, _, tipo, params) in enumerate(OPCIONES_AJUSTES):
                     fila, menos, mas, barra = controles_fila_ajuste(i)
@@ -2599,7 +3112,7 @@ while True:
             elif fallo_elegido == "CAM" and not error_camaras:
                 error_camaras = True
                 reproducir_sonido(sfx_alarma_error)
-            tiempo_siguiente_fallo = tiempo_juego() + random.uniform(25.0, 50.0)
+            tiempo_siguiente_fallo = tiempo_juego() + random.uniform(*intervalo_fallas(base=(25.0, 50.0)))
 
     if reboot_activo and not en_apagon:
         if tiempo_juego() - reboot_tiempo_inicio >= DURACION_REBOOT:
@@ -2610,7 +3123,7 @@ while True:
             reboot_activo = None
             reproducir_sonido(sfx_reboot_click)
 
-    lista_dialogos_actual = DIALOGOS_NOCHES.get(noche_actual, DIALOGOS_NOCHES[1])
+    lista_dialogos_actual = llamada_lista
     if llamada_activa and not llamada_muteada and not en_apagon:
         ahora = tiempo_juego()
         if indice_dialogo == 0 and ahora - tiempo_repique >= 2.2:
@@ -2621,6 +3134,9 @@ while True:
             indice_dialogo += 1
             if indice_dialogo >= len(lista_dialogos_actual):
                 llamada_activa = False
+                if isinstance(noche_actual, int) and not llamada_equivocada:
+                    progreso.agregar_a_lista("llamadas_completas", noche_actual)
+                    progreso.revisar_contadores()
 
     for evento in pygame.event.get():
         if evento.type == pygame.QUIT:
@@ -2651,7 +3167,7 @@ while True:
                         monitor_abierto = not monitor_abierto
                         reproducir_sonido(sfx_monitor_movimiento)
                         reproducir_sonido(sfx_estatica_cctv)
-                    if monitor_abierto and evento.key == pygame.K_v and not ir_agotado:
+                    if monitor_abierto and evento.key == pygame.K_v and not ir_agotado and not modificadores.get("sin_ir"):
                         vision_nocturna_cam = not vision_nocturna_cam
                         reproducir_sonido(sfx_linterna)
                     if not monitor_abierto:
@@ -2663,22 +3179,24 @@ while True:
                             ventilacion_sellada = not ventilacion_sellada
                             reproducir_sonido(sfx_puerta)
                         if not mirando_techo and evento.key == pygame.K_a:
-                            puerta_izq_cerrada = not puerta_izq_cerrada
-                            reproducir_sonido(sfx_puerta, 0.9, 0.2)
+                            alternar_puerta()
 
             if evento.type == pygame.MOUSEBUTTONDOWN:
                 if panel_mantenimiento_abierto:
                     btn_rv, btn_rc, btn_rall, btn_close = dibujar_panel_mantenimiento()
                     if btn_rv.collidepoint(mouse_pos) and not reboot_activo:
                         reboot_activo = "VENT"
+                        progreso.sumar("reinicios_sistema")
                         reboot_tiempo_inicio = tiempo_juego()
                         reproducir_sonido(sfx_reboot_click)
                     elif btn_rc.collidepoint(mouse_pos) and not reboot_activo:
                         reboot_activo = "CAM"
+                        progreso.sumar("reinicios_sistema")
                         reboot_tiempo_inicio = tiempo_juego()
                         reproducir_sonido(sfx_reboot_click)
                     elif btn_rall.collidepoint(mouse_pos) and not reboot_activo:
                         reboot_activo = "ALL"
+                        progreso.sumar("reinicios_sistema")
                         reboot_tiempo_inicio = tiempo_juego()
                         reproducir_sonido(sfx_reboot_click)
                     elif btn_close.collidepoint(mouse_pos):
@@ -2704,12 +3222,13 @@ while True:
 
                         if modo_ventilacion and btn_lure_rect.collidepoint(mouse_pos) and lure_cooldown <= 0.0:
                             lure_cooldown = 10.0
+                            progreso.sumar("senuelos")
                             reproducir_sonido(sfx_lure_audio, 0.7, 0.7)
                             if silas.sala().startswith("VENT"):
                                 silas.nodo_actual = max(1, silas.nodo_actual - 1)
                                 reproducir_sonido(sfx_conducto_metal, 0.6, 0.6)
 
-                        if evento.button == 3 and not modo_ventilacion and not ir_agotado and (100 <= mouse_pos[0] <= 820 and 80 <= mouse_pos[1] <= 560):
+                        if evento.button == 3 and not modo_ventilacion and not ir_agotado and not modificadores.get("sin_ir") and (100 <= mouse_pos[0] <= 820 and 80 <= mouse_pos[1] <= 560):
                             vision_nocturna_cam = not vision_nocturna_cam
                             reproducir_sonido(sfx_linterna)
 
@@ -2718,6 +3237,12 @@ while True:
                             if data["rect"].collidepoint(mouse_pos):
                                 if evento.button == 1:
                                     camara_seleccionada = cam_id
+                                    progreso.sumar("camaras_vistas")
+                                    # Secreto: muy rara vez algo pasa frente a la cámara
+                                    if isinstance(noche_actual, int) and noche_actual >= 2 and not modo_ventilacion and random.random() < 1 / 45:
+                                        fantasma_cam, fantasma_hasta = cam_id, tiempo_juego() + 1.3
+                                        reproducir_sonido(sfx_glitch_8bit, 0.6, 0.6)
+                                        progreso.desbloquear("fantasma")
                                     reproducir_sonido(sfx_estatica_cctv)
                                 elif evento.button == 3 and modo_ventilacion:
                                     if trampa_ducto == cam_id:
@@ -2733,14 +3258,14 @@ while True:
                             panel_mantenimiento_abierto = True
                             reproducir_sonido(sfx_reboot_click)
                         if RECT_BTN_PUERTA_IZQ.collidepoint(x_of, y_of):
-                            puerta_izq_cerrada = not puerta_izq_cerrada
-                            reproducir_sonido(sfx_puerta, 0.9, 0.2)
+                            alternar_puerta()
                         if RECT_BTN_LUZ_IZQ.collidepoint(x_of, y_of):
                             luz_izq = not luz_izq
                             reproducir_sonido(sfx_linterna, 0.9, 0.2)
                         if RECT_BTN_PERSIANA.collidepoint(x_of, y_of):
                             if not persiana_der_sostenida:
                                 tiempo_inicio_persiana = tiempo_juego()
+                                progreso.sumar("persianas")
                                 reproducir_sonido(sfx_persiana, 0.2, 0.9)
                             persiana_der_sostenida = True
                         if RECT_BTN_LUZ_DER.collidepoint(x_of, y_of):
@@ -2768,13 +3293,13 @@ while True:
 
     if en_jumpscare:
         tiempo_transcurrido = tiempo_juego() - tiempo_inicio_jumpscare
-        progreso = min(1.0, tiempo_transcurrido / DURACION_JUMPSCARE)
-        amp_shake = max(1, int(intensidad_shake * (1.0 - progreso)))
+        progreso_js = min(1.0, tiempo_transcurrido / DURACION_JUMPSCARE)
+        amp_shake = max(1, int(intensidad_shake * (1.0 - progreso_js)))
         shake_x = random.randint(-amp_shake, amp_shake)
         shake_y = random.randint(-amp_shake, amp_shake)
-        dibujar_jumpscare(progreso)
+        dibujar_jumpscare(progreso_js)
         pantalla.blit(pantalla.copy(), (shake_x, shake_y))
-        if progreso >= 1.0:
+        if progreso_js >= 1.0:
             en_jumpscare = False
             juego_terminado = True
 
@@ -2800,6 +3325,7 @@ while True:
         if RECT_BTN_PERSIANA.collidepoint(x_of, y_of):
             if not persiana_der_sostenida:
                 tiempo_inicio_persiana = tiempo_juego()
+                progreso.sumar("persianas")
                 reproducir_sonido(sfx_persiana, 0.2, 0.9)
             persiana_der_sostenida = True
         else:
@@ -2844,6 +3370,8 @@ while True:
     intento_linterna = not monitor_abierto and not mirando_techo and not panel_mantenimiento_abierto and not en_apagon and progreso_monitor <= 0.2 and (mouse_click[2] or teclas[pygame.K_f])
 
     if intento_linterna and not linterna_sobrecalentada:
+        if not linterna_pasillo:
+            progreso.sumar("linterna")
         linterna_pasillo = True
         calor_linterna = min(100.0, calor_linterna + 38.0 * dt)
         if calor_linterna >= 100.0:
@@ -2879,8 +3407,16 @@ while True:
                 cam_x += 650 * AJUSTES["vel_giro"] / 100.0 * dt
             cam_x = max(0, min(cam_x, ANCHO_OFICINA - ANCHO_VENTANA))
 
+        progreso.stats["tiempo_jugado"] += dt
+        if modificadores.get("puerta_limitada") and puerta_izq_cerrada:
+            puerta_t_cerrada += dt
+            if puerta_t_cerrada >= 5.0:
+                puerta_izq_cerrada = False
+                puerta_trabada_hasta = tiempo_juego() + 4.0
+                reproducir_sonido(sfx_alarma_error, 0.8, 0.1)
         if not en_apagon:
-            bateria -= (barras_uso * 0.14) * dt
+            mult_bat = 1.0 if noche_actual == "CUSTOM" else DIFICULTADES.get(AJUSTES.get("dificultad"), DIFICULTADES["normal"])["bateria"]
+            bateria -= (barras_uso * 0.14) * mult_bat * dt
             if bateria <= 0:
                 bateria = 0
                 en_apagon = True
@@ -2911,15 +3447,35 @@ while True:
         if not en_apagon:
             if ventilacion_sellada or error_ventilacion:
                 velocidad_caida_ox = 6.0 if (ventilacion_sellada and error_ventilacion) else 3.8
+                if modificadores.get("oxigeno_rapido"):
+                    velocidad_caida_ox *= 1.6
                 oxigeno -= velocidad_caida_ox * dt
                 if oxigeno <= 0:
                     oxigeno = 0
                     juego_terminado = True
                     mensaje_muerte = "FALLO EN VENTILACIÓN: ASFIXIA POR GASES INDUSTRIALES"
+                    animatronico_atacante = ""
+                    progreso.muerte("Asfixia")
+                    guardar_progreso()
             else:
-                oxigeno = min(100.0, oxigeno + 5.5 * dt)
+                oxigeno = min(100.0, oxigeno + (3.3 if modificadores.get("oxigeno_rapido") else 5.5) * dt)
 
             barnaby.actualizar()
+            # Unidad 0 (noche 6): solo se mueve si nadie la mira
+            mirando = camara_seleccionada if (monitor_abierto and progreso_monitor >= 0.95 and not modo_ventilacion and not error_camaras) else None
+            evento_u0 = unidad0.actualizar(0.0 if dev_congelados else dt, mirando)
+            if evento_u0 == "avanzo":
+                reproducir_sonido(sfx_estatica_cctv, 0.7, 0.7)
+                if mirando:
+                    glitch_cam_timer = 0.45
+            elif evento_u0 == "rechazada":
+                progreso.sumar("unidad0_rechazada")
+                reproducir_sonido(sfx_ir_lock, 0.8, 0.8)
+            elif evento_u0 == "ataque":
+                iniciar_jumpscare("Unidad 0", "LA UNIDAD 0 TE ESTABA MIRANDO")
+            if unidad0.nervios() > 0.7 and tiempo_juego() - ultimo_aviso_unidad0 > 1.2:
+                ultimo_aviso_unidad0 = tiempo_juego()
+                reproducir_sonido(sfx_estatica_cctv, 0.25, 0.25)
             silas.actualizar()
             penny.actualizar()
             bunny.actualizar()
@@ -2928,6 +3484,7 @@ while True:
             # cerrado, vuelve al inicio, la compuerta se reabre y hay que esperar para rearmarla.
             if trampa_ducto and silas.sala() == trampa_ducto:
                 silas.volver_al_inicio()
+                progreso.sumar("silas_atrapado")
                 trampa_ducto = None
                 trampa_cooldown = COOLDOWN_TRAMPA
                 reproducir_sonido(sfx_conducto_metal, 0.5, 0.5)
@@ -2936,6 +3493,7 @@ while True:
                 progreso_cegado_barnaby += dt
                 if progreso_cegado_barnaby >= 1.4:
                     barnaby.volver_al_inicio()
+                    progreso.sumar("barnaby_cegado")
                     progreso_cegado_barnaby = 0.0
                     reproducir_sonido(sfx_paso_metal, 0.5, 0.5)
             else:
@@ -2944,6 +3502,7 @@ while True:
             if bunny.nodo_actual == 4:
                 if persiana_der_sostenida and progreso_persiana >= 0.85 and (tiempo_juego() - tiempo_inicio_persiana >= 2.0):
                     bunny.volver_al_inicio()
+                    progreso.sumar("bunny_rechazado")
                     bunny.tiempo_en_ataque = 0.0
                     reproducir_sonido(sfx_paso_metal, 0.1, 0.9)
                 else:
@@ -2954,6 +3513,7 @@ while True:
             if penny.nodo_actual == 3:
                 if puerta_izq_cerrada:
                     penny.volver_al_inicio()
+                    progreso.sumar("penny_bloqueada")
                     penny.tiempo_en_ataque = 0.0
                     reproducir_sonido(sfx_paso_metal, 0.9, 0.1)
                 else:
@@ -2978,13 +3538,15 @@ while True:
         if hora > 12: hora -= 12
 
         # Más agresivos a las 2, 3 y 4 AM (solo en las noches de la historia)
-        bonus = 0 if noche_actual == "CUSTOM" else {2: 1, 3: 2, 4: 3, 5: 3}.get(hora, 0)
+        con_bonus = noche_actual != "CUSTOM" and DIFICULTADES.get(AJUSTES.get("dificultad"), DIFICULTADES["normal"])["bonus_hora"]
+        bonus = {2: 1, 3: 2, 4: 3, 5: 3}.get(hora, 0) if con_bonus else 0
         for a in (barnaby, silas, penny, bunny):
             a.bonus_hora = bonus
 
         if segundos_pasados >= DURACION_HORA_SEGUNDOS * 6:
             tiempo_inicio_6am = tiempo_juego()
             campanas_tocadas = [False, False, False]
+            registrar_fin_de_noche()
             if isinstance(noche_actual, int) and noche_actual == noche_desbloqueada and noche_desbloqueada < 5:
                 noche_desbloqueada += 1
             if noche_actual == 5:
@@ -3016,6 +3578,7 @@ while True:
 
     if not panel_mantenimiento_abierto and progreso_monitor <= 0.8:
         dibujar_panel_llamada()
+        dibujar_tutorial()
 
     if oxigeno < 45.0 and not juego_terminado and not en_apagon:
         overlay_asfixia = pygame.Surface((ANCHO_VENTANA, ALTO_VENTANA), pygame.SRCALPHA)
@@ -3048,6 +3611,9 @@ while True:
             txt_err_hud = fuente_pequeña.render(msg_hud, True, (255, 60, 60))
             pantalla.blit(txt_err_hud, (ANCHO_VENTANA - 270, 95))
 
+        if tiempo_juego() < puerta_trabada_hasta:
+            txt_tr = fuente_pequeña.render("[!] LA COMPUERTA SE TRABÓ", True, (255, 120, 60))
+            pantalla.blit(txt_tr, (30, ALTO_VENTANA - 122))
         color_bat = (50, 220, 50) if bateria > 30 else (220, 50, 50)
         txt_bat = fuente_media.render(f"BATERÍA: {int(bateria)}%", True, color_bat)
         pantalla.blit(txt_bat, (30, ALTO_VENTANA - 95))

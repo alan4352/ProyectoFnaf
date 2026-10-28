@@ -44,6 +44,8 @@ AJUSTES_POR_DEFECTO = {
     "escalado": "ajustar",      # "ajustar" (sin deformar, con bordes) o "estirar" (llena la pantalla)
     "vel_giro": 100,
     "mostrar_fps": False,
+    "dificultad": "normal",     # "historia", "normal" o "pesadilla"
+    "idioma": "es",             # "es" (español) o "en" (inglés)
 }
 
 def ruta_ajustes():
