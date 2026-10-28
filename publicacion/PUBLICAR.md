@@ -9,12 +9,12 @@ Guía paso a paso para armar el `.exe` y subir el juego a **itch.io** (recomenda
 1. Tené instalado **Python 3.10 o más nuevo** (desde python.org, marcando *"Add Python to PATH"*).
 2. Hacé doble clic en **`compilar.bat`**. El script hace todo solo:
    - crea el entorno virtual `venv` si no existe,
-   - instala `pygame` y `pyinstaller` (de `requirements.txt`),
+   - instala `pygame-ce` y `pyinstaller` (de `requirements.txt`),
    - compila el juego con el ícono `icono.ico`.
 3. El juego queda en **`dist\FNAF_Industrial.exe`**. Es un solo archivo: lleva adentro todas las imágenes.
 
-> Si Windows 10 muestra un error de versión de Python, instalá Python 3.10 o 3.11, que funcionan bien en
-> versiones viejas de Windows 10.
+> Si la instalación falla con un error de `pygame` o de *wheel*, borrá la carpeta `venv` y volvé a
+> ejecutar `compilar.bat`. El juego usa **pygame-ce**, que tiene versión lista para Python 3.10 a 3.15.
 
 ## 2. Probar antes de publicar
 

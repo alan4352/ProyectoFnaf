@@ -18,11 +18,14 @@ if not exist venv (
 )
 call venv\Scripts\activate.bat
 
-echo [2/4] Instalando dependencias (pygame y pyinstaller)...
+echo [2/4] Instalando dependencias (pygame-ce y pyinstaller)...
 python -m pip install --upgrade pip >nul
+rem pygame-ce reemplaza a pygame (mismo codigo, y tiene version para Python nuevos)
+python -m pip uninstall -y pygame >nul 2>&1
 python -m pip install -r requirements.txt
 if errorlevel 1 (
-    echo ERROR: no se pudieron instalar las dependencias. Revisa tu conexion a internet.
+    echo ERROR: no se pudieron instalar las dependencias.
+    echo Si el error menciona "pygame" o "wheel", borra la carpeta venv y vuelve a ejecutar este archivo.
     pause
     exit /b 1
 )

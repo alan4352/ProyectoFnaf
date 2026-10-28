@@ -30,9 +30,12 @@ traducción al inglés en `historia_en.py`.
 ## Cómo jugar
 
 ```
-pip install pygame
+pip install pygame-ce
 python fnaf_fabrica.py
 ```
+
+Se usa **pygame-ce** (la versión de pygame mantenida por la comunidad): el código es el mismo, pero tiene
+versión lista para instalar en Python nuevos (3.14, 3.15), donde el `pygame` clásico no instala.
 
 Para crear el `.exe`, hacé doble clic en `compilar.bat`: crea el entorno, instala lo necesario
 (`requirements.txt`) y compila. El `.exe` queda en `dist\FNAF_Industrial.exe` (con el ícono del juego) y el
