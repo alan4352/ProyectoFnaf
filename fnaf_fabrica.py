@@ -180,12 +180,13 @@ sfx_ambiente = sonido("ambiente", 3.0, 55, "seno", fade=False)
 if "ambiente" not in SONIDOS_REALES:
     sfx_ambiente.set_volume(0.12)
 musica_menu = cargar_sonido_opcional("musica_menu")
+caja_musica = cargar_sonido_opcional("caja_musica")   # Melodía del apagón (si no está, se usan notas sintéticas)
 modulo_audio.al_progreso = None
 VOCES_LLAMADA = {n: cargar_sonido_opcional(f"llamada_noche_{n}") for n in range(1, 6)}
 print(f"[AUDIO] Archivos reales: {', '.join(SONIDOS_REALES) or 'ninguno'}"
       f" | gritos: {sum(1 for g in GRITOS.values() if g)}/4"
       f" | voces: {sum(1 for v in VOCES_LLAMADA.values() if v)}/5"
-      f" | música menú: {'sí' if musica_menu else 'no'}")
+      f" | música menú: {'sí' if musica_menu else 'no'} | caja de música: {'sí' if caja_musica else 'no'}")
 
 def actualizar_audio_continuo():
     """Arranca o corta el ambiente y la música según lo que esté pasando."""
@@ -3435,7 +3436,11 @@ while True:
                 reproducir_sonido(sfx_apagon_down)
         else:
             t_ap = tiempo_juego() - tiempo_inicio_apagon
-            if 2.5 < t_ap < 12.0:
+            if 2.5 < t_ap < 12.0 and caja_musica:
+                if indice_nota_apagon == 0:
+                    indice_nota_apagon = 1
+                    reproducir_sonido(caja_musica, 0.6, 0.6)
+            elif 2.5 < t_ap < 12.0:
                 if tiempo_juego() - tiempo_ultima_nota_apagon >= 0.75:
                     tiempo_ultima_nota_apagon = tiempo_juego()
                     nota = NOTAS_CAJA_MUSICA[indice_nota_apagon % len(NOTAS_CAJA_MUSICA)]
