@@ -53,7 +53,7 @@ jobs:
         working-directory: build_android
         run: |
           set -o pipefail
-          yes | buildozer android debug 2>&1 | tail -n 400
+          buildozer android debug < /dev/null 2>&1 | tail -n 400
 
       - name: Revisar el APK
         run: |
