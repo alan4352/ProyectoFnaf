@@ -45,6 +45,23 @@ UI_EN = {
     "Se aplica a las noches 1 a 6 desde la próxima noche. HISTORIA: más fácil, para ver la historia.":
         "Applies to nights 1-6 starting next night. STORY: easier, to enjoy the story.",
     "Cambia el idioma de todo el juego.": "Changes the language of the whole game.",
+    "SUBTÍTULOS DE SONIDOS": "SOUND SUBTITLES",
+    "¡TE VIERON! NADIE PUEDE SABERLO": "YOU WERE SEEN! NOBODY CAN KNOW", "LISTO. VUELVE A TU OFICINA": "DONE. GO BACK TO YOUR OFFICE",
+    "DEL OTRO LADO": "THE OTHER SIDE", "Completa la cinta 0.": "Complete tape 0.",
+    "MODO INFINITO": "ENDLESS MODE", "[ESC] PARA CONTINUAR": "[ESC] TO CONTINUE", "Récord modo infinito": "Endless mode record", "RESISTISTE": "YOU LASTED", "RÉCORD": "RECORD", "¡NUEVO RÉCORD!": "NEW RECORD!",
+    "MEJORES TIEMPOS": "BEST TIMES", "Sin 6 AM: cada hora son más rápidos. ¿Cuánto aguantas?":
+        "No 6 AM: every hour they get faster. How long can you last?",
+    "CAMPANADA: UNA HORA MÁS": "BELL: ONE MORE HOUR", "ALGO NUEVO SE ENCENDIÓ EN LA PLANTA": "SOMETHING NEW SWITCHED ON IN THE PLANT",
+    "MARATÓN": "MARATHON", "Resiste 10 horas en el modo infinito.": "Last 10 hours in endless mode.",
+    "Muestra en pantalla los sonidos importantes (pasos, respiración, golpes) y de qué lado vienen.":
+        "Shows important sounds on screen (footsteps, breathing, knocking) and which side they come from.",
+    "PASOS METÁLICOS": "METALLIC FOOTSTEPS", "RUIDO EN LOS DUCTOS": "NOISE IN THE DUCTS",
+    "PASOS PESADOS EN EL PASILLO": "HEAVY FOOTSTEPS IN THE HALLWAY",
+    "RESPIRACIÓN DETRÁS DE LA PUERTA": "BREATHING BEHIND THE DOOR", "GOLPES EN EL TECHO": "KNOCKING ON THE CEILING",
+    "GOLPES EN EL VIDRIO": "TAPPING ON THE GLASS", "ALARMA: FALLA DE VENTILACIÓN": "ALARM: VENTILATION FAILURE",
+    "ALARMA: FALLA DE CÁMARAS": "ALARM: CAMERA FAILURE", "TELÉFONO SONANDO": "PHONE RINGING",
+    "INTERFERENCIA EN LAS CÁMARAS": "CAMERA INTERFERENCE", "ESTÁTICA... ALGO SE MUEVE": "STATIC... SOMETHING IS MOVING",
+    "UNA CAJA DE MÚSICA EN LA OSCURIDAD": "A MUSIC BOX IN THE DARK",
     # Oficina y HUD
     "PUERTA": "DOOR", "LUZ": "LIGHT", "PERSIANA": "SHUTTER", "MANT.": "MAINT.", "USO:": "USAGE:",
     "SOBRECALENTADA": "OVERHEATED", "[ESPACIO / CLIC] MONITOR CCTV": "[SPACE / CLICK] CCTV MONITOR",
@@ -179,6 +196,8 @@ PATRONES_EN = [
     (r"^★ (.*)$", "★ {1}"),
     (r"^OBJETIVO: (.*)$", "OBJECTIVE: {1}"),
     (r"^PRUEBA ENCONTRADA: (.*)$", "EVIDENCE FOUND: {1}"),
+    (r"^CANDADOS: (.*)$", "PADLOCKS: {1}"),
+    (r"^CANDADO CAMBIADO \((.*)\)$", "PADLOCK CHANGED ({1})"),
     (r"^¡PRUEBA ENCONTRADA! (.*)$", "EVIDENCE FOUND! {1}"),
     (r"^INTENTOS: (\d+)   //   ESC: SALTAR$", "ATTEMPTS: {1}   //   ESC: SKIP"),
     (r"^VÁLVULA (\d+) CERRADA$", "VALVE {1} CLOSED"),

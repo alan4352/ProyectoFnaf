@@ -46,6 +46,7 @@ AJUSTES_POR_DEFECTO = {
     "mostrar_fps": False,
     "dificultad": "normal",     # "historia", "normal" o "pesadilla"
     "idioma": "es",             # "es" (español) o "en" (inglés)
+    "subtitulos": False,        # Mostrar en pantalla los sonidos importantes
 }
 
 def ruta_ajustes():

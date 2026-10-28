@@ -41,6 +41,10 @@ Para crear el `.exe`, hacé doble clic en `compilar.bat`: crea el entorno, insta
 (`requirements.txt`) y compila. El `.exe` queda en `dist\FNAF_Industrial.exe` (con el ícono del juego) y el
 progreso se guarda en `save_data.json` y `ajustes.json`, junto al `.exe`.
 
+**Compilación automática:** cada vez que subís cambios a GitHub, el juego se compila solo en Windows
+(pestaña **Actions** del repositorio → la última ejecución → **Artifacts** → `FNAF_Industrial-windows`).
+Si creás una etiqueta `v1.1`, `v1.2`, etc., además se publica una **Release** con el zip listo.
+
 Para publicarlo (itch.io o GitHub), seguí `publicacion/PUBLICAR.md`; el texto para la página está en
 `publicacion/PAGINA_ITCH.md` y las capturas en `publicacion/capturas/`.
 
@@ -162,10 +166,16 @@ Con 2 o 3 cuadros ya alcanza para un parpadeo o un tic.
 
 ### Audio (`.ogg`, `.wav` o `.mp3`, por ejemplo en `assets/audio/`)
 
+El juego ya trae audio propio en `assets/audio/` (ambiente, música del menú, caja de música del apagón,
+gritos, efectos), generado por síntesis con `herramientas/sintetizar_audio.py`. Para cambiar un sonido,
+reemplazá el archivo por uno tuyo con el mismo nombre, o editá el script y volvé a generarlo
+(necesita numpy, scipy y ffmpeg; no hacen falta para jugar).
+
 | Archivo | Cuándo suena |
 |---|---|
 | `ambiente` | Bucle de fondo durante la noche |
 | `musica_menu` | Bucle en el menú |
+| `caja_musica` | Melodía durante el apagón |
 | `grito_barnaby`, `grito_silas`, `grito_penny`, `grito_bunny` | Jumpscare de cada uno |
 | `llamada_noche_1` … `llamada_noche_5` | Voz de la llamada de cada noche |
 | `puerta`, `persiana`, `linterna`, `monitor_movimiento`, `estatica_cctv` | Acciones de la oficina |

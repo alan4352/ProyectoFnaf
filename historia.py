@@ -173,6 +173,25 @@ CINTAS = {
         "prueba": "PLANO DE EVACUACIÓN DEL SECTOR B",
         "prueba_detalle": "Las cuatro salidas de emergencia están tachadas a mano. Firma: E.V.",
     },
+    # La cinta secreta (se abre con 0303). Su prueba no cuenta para el final.
+    0: {
+        "titulo": "CINTA 0 // 02-MAR-1982 // 23:50",
+        "personaje": "ERNESTO VARELA, JEFE DE PLANTA",
+        "intro": [
+            "Esta vez eres Ernesto Varela, el jefe de planta.",
+            "Mañana sale el pedido de Holloway Parks. Nadie se va hasta terminarlo.",
+            "Cambia los candados de las cuatro salidas sin que el turno noche te vea.",
+        ],
+        "objetivo": "CAMBIA LOS 4 CANDADOS Y VUELVE A TU OFICINA",
+        "pista": "Alguien dejó un papel en el cuarto de herramientas...",
+        "outro": [
+            "Varela cerró el último candado y guardó las llaves en su escritorio.",
+            "Esa noche durmió en la oficina. Los hornos siguieron encendidos.",
+            "Tres horas después, las cuatro salidas no se abrieron.",
+        ],
+        "prueba": "RECIBO DE LA CERRAJERÍA",
+        "prueba_detalle": "'4 candados de seguridad. Pagado en efectivo. E. Varela. Sin factura.'",
+    },
     4: {
         "titulo": "CINTA 4 DE 4 // 03-MAR-1982 // 03:15 AM",
         "personaje": "RUBÉN 'RUSTY' ORTIZ, DEPÓSITO",

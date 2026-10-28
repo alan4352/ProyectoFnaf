@@ -1,0 +1,37 @@
+FNAF: INDUSTRIAL SECTOR (1982)
+==============================
+
+[ESPAÑOL]
+Abrí FNAF_Industrial.exe para jugar. No necesita instalación.
+Si Windows muestra un aviso, elegí "Más información" y luego "Ejecutar de todas formas".
+Las partidas y los ajustes se guardan en esta misma carpeta (save_data.json y ajustes.json).
+
+Controles:
+  ESPACIO / C ...... abrir o cerrar las cámaras
+  A ................ compuerta izquierda
+  F / clic derecho . linterna al pasillo (mantener)
+  W / S ............ mirar al techo / volver
+  M ................ panel de mantenimiento
+  V ................ visión nocturna (en cámaras)
+  ESC / P .......... pausa        F11 .... pantalla completa
+  Botones en pantalla: luces, persiana (mantener apretado)
+
+Juego de fans no oficial y sin fines de lucro, inspirado en Five Nights at Freddy's de Scott Cawthon.
+
+[ENGLISH]
+Run FNAF_Industrial.exe to play. No installation needed.
+If Windows shows a warning, choose "More info" and then "Run anyway".
+Saves and settings are stored in this same folder (save_data.json and ajustes.json).
+You can switch the language to English in SETTINGS.
+
+Controls:
+  SPACE / C ........ open or close the cameras
+  A ................ left door
+  F / right click .. flashlight down the hallway (hold)
+  W / S ............ look up at the ceiling / back
+  M ................ maintenance panel
+  V ................ night vision (on cameras)
+  ESC / P .......... pause        F11 .... fullscreen
+  On-screen buttons: lights, shutter (hold down)
+
+Unofficial, non-profit fan game inspired by Five Nights at Freddy's by Scott Cawthon.
