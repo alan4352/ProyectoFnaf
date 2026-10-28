@@ -9,9 +9,13 @@ esa imagen se adapta al tamaño real de la ventana o del monitor:
 También aplica el brillo y muestra los FPS. Las posiciones del mouse se traducen solas,
 así que el resto del código sigue trabajando en coordenadas de 1200x700.
 """
+import sys
+
 import pygame
 
 import mando
+
+EN_NAVEGADOR = sys.platform == "emscripten"
 
 virtual = None          # Superficie donde se dibuja el juego (1200x700)
 AJUSTES = {}            # Mismo diccionario que los ajustes del juego
@@ -58,7 +62,10 @@ def aplicar_modo():
     ancho = virtual.get_width() if virtual else 1200
     alto = virtual.get_height() if virtual else 700
     try:
-        if AJUSTES.get("pantalla_completa"):
+        if EN_NAVEGADOR:
+            # En la versión web la página se encarga del tamaño del lienzo
+            _ventana = pygame.display.set_mode((ancho, alto))
+        elif AJUSTES.get("pantalla_completa"):
             _ventana = pygame.display.set_mode((0, 0), pygame.FULLSCREEN)
         else:
             _ventana = pygame.display.set_mode((ancho, alto), pygame.RESIZABLE)

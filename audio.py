@@ -3,12 +3,13 @@
 import io
 import math
 import random
-import wave
+import struct
 import pygame
 from recursos import cargar_sonido_opcional
 
 def crear_sonido_procedural(duracion, frecuencia_base, tipo="seno", fade=True, mod=0.0):
-    tasa = 44100
+    info = pygame.mixer.get_init()          # (frecuencia, tamaño, canales) del mezclador
+    tasa = info[0] if info else 44100
     n_muestras = int(tasa * duracion)
     muestras = bytearray()
 
@@ -36,14 +37,19 @@ def crear_sonido_procedural(duracion, frecuencia_base, tipo="seno", fade=True, m
         muestras.extend(b)
         muestras.extend(b)
 
-    buffer_io = io.BytesIO()
-    with wave.open(buffer_io, 'wb') as wf:
-        wf.setnchannels(2)
-        wf.setsampwidth(2)
-        wf.setframerate(tasa)
-        wf.writeframes(muestras)
-    buffer_io.seek(0)
-    return pygame.mixer.Sound(buffer_io)
+    if info and info[1] == -16 and info[2] == 2:
+        # Formato igual al del mezclador: se carga directo (así también anda en la versión web)
+        return pygame.mixer.Sound(buffer=bytes(muestras))
+    return pygame.mixer.Sound(io.BytesIO(armar_wav(bytes(muestras), tasa)))
+
+
+def armar_wav(datos, tasa, canales=2, bytes_muestra=2):
+    """Arma un archivo WAV en memoria (cabecera RIFF + datos). No usa el módulo 'wave'
+    porque la versión web (pygbag) no lo trae."""
+    bloque = canales * bytes_muestra
+    cabecera = struct.pack("<4sI4s4sIHHIIHH4sI", b"RIFF", 36 + len(datos), b"WAVE", b"fmt ", 16, 1, canales,
+                           tasa, tasa * bloque, bloque, bytes_muestra * 8, b"data", len(datos))
+    return cabecera + datos
 
 
 SONIDOS_REALES = []
