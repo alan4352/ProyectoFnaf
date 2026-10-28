@@ -802,12 +802,16 @@ class Animatronico:
 
             if self.nombre == "Penny":
                 reproducir_sonido(sfx_paso_metal, 0.9, 0.1)
+                subtitulo("PASOS METÁLICOS", -1)
             elif self.nombre == "Rusty Bunny":
                 reproducir_sonido(sfx_paso_metal, 0.1, 0.9)
+                subtitulo("PASOS METÁLICOS", 1)
             elif self.nombre == "Silas":
                 reproducir_sonido(sfx_conducto_metal, 0.6, 0.6)
+                subtitulo("RUIDO EN LOS DUCTOS", 0)
             elif self.nombre == "Barnaby":
                 reproducir_sonido(sfx_paso_metal, 0.5, 0.5)
+                subtitulo("PASOS PESADOS EN EL PASILLO", 0)
 
 barnaby = Animatronico("Barnaby", ["CAM_01", "CAM_02", "CAM_07_LEJOS", "CAM_07_CERCA", "OFICINA"], 10, 7.5)
 silas = Animatronico("Silas", RUTA_SILAS_NORTE, 9, 8.0, [RUTA_SILAS_NORTE, RUTA_SILAS_OESTE])
@@ -832,6 +836,39 @@ def alternar_puerta():
         uso_puerta_noche = True
         puerta_t_cerrada = 0.0
 
+# Subtítulos de sonidos (accesibilidad): texto, lado (-1 izquierda, 0 centro, 1 derecha), hasta cuándo
+subtitulos_activos = []
+
+def subtitulo(texto, lado=0, segundos=2.5):
+    if not AJUSTES.get("subtitulos"):
+        return
+    fin = tiempo_juego() + segundos
+    for item in subtitulos_activos:
+        if item[0] == texto:
+            item[1], item[2] = lado, fin
+            return
+    subtitulos_activos.append([texto, lado, fin])
+
+def dibujar_subtitulos():
+    ahora_s = tiempo_juego()
+    subtitulos_activos[:] = [s_ for s_ in subtitulos_activos if s_[2] > ahora_s][-4:]
+    pisos = {-1: 0, 0: 0, 1: 0}
+    for texto, lado, fin in reversed(subtitulos_activos):
+        i = pisos[lado]
+        pisos[lado] += 1
+        cuerpo = T(texto)
+        etiqueta = ("<<  " + cuerpo) if lado < 0 else ((cuerpo + "  >>") if lado > 0 else cuerpo)
+        sup = fuente_pequeña.render(etiqueta, True, (255, 255, 255))
+        caja = pygame.Rect(0, 0, sup.get_width() + 24, sup.get_height() + 10)
+        caja.centerx = ANCHO_VENTANA // 2 + lado * 260
+        caja.bottom = ALTO_VENTANA - 62 - i * (caja.height + 4)
+        fondo = pygame.Surface(caja.size, pygame.SRCALPHA)
+        fondo.fill((0, 0, 0, 175))
+        pantalla.blit(fondo, caja.topleft)
+        if fin - ahora_s < 0.4:
+            sup.set_alpha(int(255 * (fin - ahora_s) / 0.4))
+        pantalla.blit(sup, (caja.x + 12, caja.y + 5))
+
 def comenzar_noche(noche):
     global cam_x, mirando_techo, monitor_abierto, modo_ventilacion, panel_mantenimiento_abierto
     global camara_seleccionada, trampa_ducto, bateria, oxigeno, hora
@@ -848,6 +885,7 @@ def comenzar_noche(noche):
     global llamada_lista, llamada_equivocada, modificadores, uso_puerta_noche, puerta_t_cerrada, puerta_trabada_hasta
 
     noche_actual = noche
+    subtitulos_activos.clear()
     cam_x = 300
     mirando_techo = False
     monitor_abierto = False
@@ -2200,6 +2238,7 @@ OPCIONES_AJUSTES = [
     ("mostrar_fps", "MOSTRAR FPS", "si_no", None),
     ("dificultad", "DIFICULTAD (HISTORIA)", "opciones", [(k, v["nombre"]) for k, v in DIFICULTADES.items()]),
     ("idioma", "IDIOMA / LANGUAGE", "opciones", [("es", "ESPAÑOL"), ("en", "ENGLISH")]),
+    ("subtitulos", "SUBTÍTULOS DE SONIDOS", "si_no", None),
 ]
 AYUDA_AJUSTES = {
     "escalado": "AJUSTAR mantiene la imagen sin deformar (puede dejar bordes negros). ESTIRAR llena toda la pantalla.",
@@ -2209,8 +2248,9 @@ AYUDA_AJUSTES = {
     "pantalla_completa": "También se cambia en cualquier momento con F11.",
     "dificultad": "Se aplica a las noches 1 a 6 desde la próxima noche. HISTORIA: más fácil, para ver la historia.",
     "idioma": "Cambia el idioma de todo el juego.",
+    "subtitulos": "Muestra en pantalla los sonidos importantes (pasos, respiración, golpes) y de qué lado vienen.",
 }
-Y_AJUSTES, ALTO_FILA_AJUSTES = 108, 38
+Y_AJUSTES, ALTO_FILA_AJUSTES = 96, 34
 X_CONTROL, ANCHO_CONTROL = 640, 400
 
 def cambiar_ajuste(clave, direccion=1, valor=None):
@@ -2241,13 +2281,13 @@ def cambiar_ajuste(clave, direccion=1, valor=None):
 def controles_fila_ajuste(i):
     y = Y_AJUSTES + i * ALTO_FILA_AJUSTES
     fila = pygame.Rect(150, y, 900, ALTO_FILA_AJUSTES - 6)
-    menos = pygame.Rect(X_CONTROL, y + 4, 34, 30)
-    mas = pygame.Rect(X_CONTROL + ANCHO_CONTROL - 34, y + 4, 34, 30)
-    barra = pygame.Rect(menos.right + 12, y + 13, mas.left - menos.right - 24, 12)
+    menos = pygame.Rect(X_CONTROL, y + 2, 34, 28)
+    mas = pygame.Rect(X_CONTROL + ANCHO_CONTROL - 34, y + 2, 34, 28)
+    barra = pygame.Rect(menos.right + 12, y + 8, mas.left - menos.right - 24, 10)
     return fila, menos, mas, barra
 
-RECT_AJ_RESTABLECER = pygame.Rect(ANCHO_VENTANA // 2 - 300, 600, 280, 50)
-RECT_AJ_VOLVER = pygame.Rect(ANCHO_VENTANA // 2 + 20, 600, 280, 50)
+RECT_AJ_RESTABLECER = pygame.Rect(ANCHO_VENTANA // 2 - 300, 606, 280, 46)
+RECT_AJ_VOLVER = pygame.Rect(ANCHO_VENTANA // 2 + 20, 606, 280, 46)
 
 def dibujar_menu_ajustes():
     if ajustes_volver_a == "PAUSA":
@@ -2258,9 +2298,9 @@ def dibujar_menu_ajustes():
     else:
         pantalla.fill((8, 10, 12))
     txt = fuente_titulo.render("AJUSTES", True, (220, 230, 235))
-    pantalla.blit(txt, (ANCHO_VENTANA // 2 - txt.get_width() // 2, 38))
+    pantalla.blit(txt, (ANCHO_VENTANA // 2 - txt.get_width() // 2, 20))
     sub = fuente_cam.render("[ARRIBA/ABAJO] ELEGIR   [IZQ/DER] CAMBIAR   [ESC] VOLVER   //   SE GUARDA SOLO", True, (110, 140, 130))
-    pantalla.blit(sub, (ANCHO_VENTANA // 2 - sub.get_width() // 2, 92))
+    pantalla.blit(sub, (ANCHO_VENTANA // 2 - sub.get_width() // 2, 72))
 
     pos = pygame.mouse.get_pos()
     for i, (clave, texto, tipo, params) in enumerate(OPCIONES_AJUSTES):
@@ -2288,7 +2328,7 @@ def dibujar_menu_ajustes():
             pygame.draw.rect(pantalla, (40, 200, 130), lleno, border_radius=6)
             pygame.draw.circle(pantalla, (230, 255, 240), (lleno.right, barra.centery), 9)
             v_txt = fuente_cam.render(f"{valor}{sufijo}", True, (200, 220, 210))
-            pantalla.blit(v_txt, (barra.centerx - v_txt.get_width() // 2, barra.bottom + 3))
+            pantalla.blit(v_txt, (barra.centerx - v_txt.get_width() // 2, barra.bottom + 1))
         else:
             if tipo == "si_no":
                 texto_valor, color = ("SÍ", (80, 230, 140)) if valor else ("NO", (230, 110, 100))
@@ -2300,7 +2340,7 @@ def dibujar_menu_ajustes():
     clave_sel = OPCIONES_AJUSTES[ajustes_seleccion][0]
     if clave_sel in AYUDA_AJUSTES:
         ayuda = fuente_cam.render(AYUDA_AJUSTES[clave_sel], True, (140, 160, 150))
-        pantalla.blit(ayuda, (ANCHO_VENTANA // 2 - ayuda.get_width() // 2, 572))
+        pantalla.blit(ayuda, (ANCHO_VENTANA // 2 - ayuda.get_width() // 2, 578))
 
     dibujar_boton_menu(RECT_AJ_RESTABLECER, "RESTABLECER", (180, 120, 40))
     dibujar_boton_menu(RECT_AJ_VOLVER, "[ESC] VOLVER", (40, 160, 110))
@@ -3110,9 +3150,11 @@ while True:
             if fallo_elegido == "VENT" and not error_ventilacion:
                 error_ventilacion = True
                 reproducir_sonido(sfx_alarma_error)
+                subtitulo("ALARMA: FALLA DE VENTILACIÓN", 0, 3.0)
             elif fallo_elegido == "CAM" and not error_camaras:
                 error_camaras = True
                 reproducir_sonido(sfx_alarma_error)
+                subtitulo("ALARMA: FALLA DE CÁMARAS", 0, 3.0)
             tiempo_siguiente_fallo = tiempo_juego() + random.uniform(*intervalo_fallas(base=(25.0, 50.0)))
 
     if reboot_activo and not en_apagon:
@@ -3129,6 +3171,7 @@ while True:
         ahora = tiempo_juego()
         if indice_dialogo == 0 and ahora - tiempo_repique >= 2.2:
             reproducir_sonido(sfx_timbre)
+            subtitulo("TELÉFONO SONANDO", 0, 2.3)
             tiempo_repique = ahora
         if ahora - tiempo_ultimo_texto >= 5.5:
             tiempo_ultimo_texto = ahora
@@ -3357,15 +3400,16 @@ while True:
         ahora_cue = tiempo_juego()
         pistas = []
         if penny.sala() == "PUERTA_IZQ" and not puerta_izq_cerrada:
-            pistas.append(("penny", 2.6, sfx_respiracion, 0.45, 0.05))
+            pistas.append(("penny", 2.6, sfx_respiracion, 0.45, 0.05, "RESPIRACIÓN DETRÁS DE LA PUERTA", -1))
         if silas.sala() == "REJILLA_OFICINA":
-            pistas.append(("silas", 1.7, sfx_golpe_techo, 0.5, 0.5))
+            pistas.append(("silas", 1.7, sfx_golpe_techo, 0.5, 0.5, "GOLPES EN EL TECHO", 0))
         if bunny.sala() == "VENTANA_DER" and progreso_persiana < 0.85:
-            pistas.append(("bunny", 2.1, sfx_golpe_vidrio, 0.05, 0.5))
-        for clave_p, cada, sfx_p, vi, vd in pistas:
+            pistas.append(("bunny", 2.1, sfx_golpe_vidrio, 0.05, 0.5, "GOLPES EN EL VIDRIO", 1))
+        for clave_p, cada, sfx_p, vi, vd, texto_p, lado_p in pistas:
             if ahora_cue - ultimo_aviso_sonoro.get(clave_p, -99) >= cada:
                 ultimo_aviso_sonoro[clave_p] = ahora_cue
                 reproducir_sonido(sfx_p, vi, vd)
+                subtitulo(texto_p, lado_p, cada + 0.3)
 
     teclas = pygame.key.get_pressed()
     intento_linterna = not monitor_abierto and not mirando_techo and not panel_mantenimiento_abierto and not en_apagon and progreso_monitor <= 0.2 and (mouse_click[2] or teclas[pygame.K_f])
@@ -3440,6 +3484,7 @@ while True:
                 if indice_nota_apagon == 0:
                     indice_nota_apagon = 1
                     reproducir_sonido(caja_musica, 0.6, 0.6)
+                    subtitulo("UNA CAJA DE MÚSICA EN LA OSCURIDAD", -1, 9.0)
             elif 2.5 < t_ap < 12.0:
                 if tiempo_juego() - tiempo_ultima_nota_apagon >= 0.75:
                     tiempo_ultima_nota_apagon = tiempo_juego()
@@ -3471,6 +3516,7 @@ while True:
             evento_u0 = unidad0.actualizar(0.0 if dev_congelados else dt, mirando)
             if evento_u0 == "avanzo":
                 reproducir_sonido(sfx_estatica_cctv, 0.7, 0.7)
+                subtitulo("INTERFERENCIA EN LAS CÁMARAS", 0)
                 if mirando:
                     glitch_cam_timer = 0.45
             elif evento_u0 == "rechazada":
@@ -3480,6 +3526,7 @@ while True:
                 iniciar_jumpscare("Unidad 0", "LA UNIDAD 0 TE ESTABA MIRANDO")
             if unidad0.nervios() > 0.7 and tiempo_juego() - ultimo_aviso_unidad0 > 1.2:
                 ultimo_aviso_unidad0 = tiempo_juego()
+                subtitulo("ESTÁTICA... ALGO SE MUEVE", 0, 1.5)
                 reproducir_sonido(sfx_estatica_cctv, 0.25, 0.25)
             silas.actualizar()
             penny.actualizar()
@@ -3639,6 +3686,9 @@ while True:
         estado_lin = "SOBRECALENTADA" if linterna_sobrecalentada else f"{int(calor_linterna)}%"
         txt_cal = fuente_pequeña.render(f"BULBO LINTERNA: {estado_lin}", True, col_calor)
         pantalla.blit(txt_cal, (30, ALTO_VENTANA - 20))
+
+    if not juego_terminado and not en_jumpscare:
+        dibujar_subtitulos()
 
     # Easter Eggs Alucinaciones VHS
     if not juego_terminado and not en_jumpscare and random.random() < 0.0008:
