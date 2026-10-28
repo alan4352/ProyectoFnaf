@@ -6,6 +6,7 @@ para que se vea como un juego de 8 bits. Los mapas son texto: cada carácter es 
 baldosa de 10x10 píxeles. Se pueden editar acá abajo:
     '#' pared   '.' piso   'P' inicio   'G' objetivo   'E' prueba escondida
     '1' '2' '3' válvulas (cinta 2)   'T' turbina (cinta 3)   'K' llave y 'X' salida (cinta 4)
+    'C' candado de una salida (cinta 0, la secreta)
 
 Uso desde el juego:
     mj = crear_minijuego(numero, contexto)
@@ -140,6 +141,7 @@ SPRITE_OPERARIO = [
 PIERNAS = [[".ll..ll.", ".ll..ll."], ["..llll..", "..l..l.."]]
 
 OPERARIOS = {
+    0: {"h": (70, 62, 55), "s": (215, 175, 140), "e": (20, 20, 20), "b": (75, 78, 90), "l": (30, 30, 36)},       # Varela (traje)
     1: {"h": (230, 200, 40), "s": (232, 182, 140), "e": (20, 20, 20), "b": (50, 90, 170), "l": (40, 40, 60)},    # Walter
     2: {"h": (125, 125, 135), "s": (125, 125, 135), "e": (30, 200, 230), "b": (220, 120, 40), "l": (70, 45, 30)},  # Marta (máscara)
     3: {"h": (190, 50, 50), "s": (210, 160, 120), "e": (20, 20, 20), "b": (60, 140, 80), "l": (30, 60, 40)},      # Tomás
@@ -813,7 +815,183 @@ class CintaRuben(Cinta):
         pantalla.blit(f["8bit"].render(txt, True, (240, 210, 60) if self.tiene_llave else (160, 160, 160)), (700, 66))
 
 
-MINIJUEGOS = {1: CintaWalter, 2: CintaMarta, 3: CintaTomas, 4: CintaRuben}
+# -------------------------------------------------------------
+# CINTA 0 (secreta): Varela cambia los candados de las salidas
+# -------------------------------------------------------------
+class Vigilante:
+    """Alguien que recorre una ronda con linterna y ve en un cono."""
+    def __init__(self, ronda, velocidad, largo=48.0, angulo=math.radians(28)):
+        self.ronda = [centro_baldosa(c, f) for c, f in ronda]
+        self.x, self.y = self.ronda[0]
+        self.objetivo = 1
+        self.dir = 0.0
+        self.velocidad = velocidad
+        self.largo, self.angulo = largo, angulo
+        self.paso, self.dist = 0, 0.0
+
+    def actualizar(self, dt):
+        tx, ty = self.ronda[self.objetivo]
+        dx, dy = tx - self.x, ty - self.y
+        dist = math.hypot(dx, dy)
+        paso = self.velocidad * dt
+        if dist <= paso:
+            self.x, self.y = tx, ty
+            self.objetivo = (self.objetivo + 1) % len(self.ronda)
+        else:
+            self.x += dx / dist * paso
+            self.y += dy / dist * paso
+            dif = (math.atan2(dy, dx) - self.dir + math.pi) % (2 * math.pi) - math.pi
+            self.dir += max(-6 * dt, min(6 * dt, dif))
+            self.dist += paso
+            if self.dist > 7:
+                self.dist, self.paso = 0.0, self.paso + 1
+
+    def ve(self, px, py, muros):
+        dx, dy = px - self.x, py - self.y
+        dist = math.hypot(dx, dy)
+        if dist > self.largo or dist < 1:
+            return dist < 6
+        dif = (math.atan2(dy, dx) - self.dir + math.pi) % (2 * math.pi) - math.pi
+        if abs(dif) > self.angulo:
+            return False
+        pasos = int(dist / 3)
+        for i in range(1, pasos):
+            if any(m.collidepoint(self.x + dx * i / pasos, self.y + dy * i / pasos) for m in muros):
+                return False
+        return True
+
+    def dibujar_cono(self, cono):
+        a1, a2 = self.dir - self.angulo, self.dir + self.angulo
+        puntos = [(self.x, self.y)]
+        for k in range(9):
+            a = a1 + (a2 - a1) * k / 8
+            puntos.append((self.x + self.largo * math.cos(a), self.y + self.largo * math.sin(a)))
+        pygame.draw.polygon(cono, (255, 240, 150, 50), puntos)
+
+
+COLORES_TURNO_NOCHE = {"h": (40, 40, 40), "s": (200, 150, 110), "e": (20, 20, 20), "b": (150, 110, 50), "l": (50, 45, 40)}
+
+
+class CintaVarela(Cinta):
+    numero = 0
+    MAPA = [
+        "#############C################",
+        "#.....#......................#",
+        "#.G...#..##..##..##..##..##..#",
+        "#..P..#..##..##..##..##..##..#",
+        "#.....#......................#",
+        "###.###..####..........####..#",
+        "#............................C",
+        "#..##..##...##########...##..#",
+        "C..##..##...#.......E#...##..#",
+        "#...........#........#.......#",
+        "#..##..##...####..####...##..#",
+        "#..##..##................##..#",
+        "#............................#",
+        "#............................#",
+        "##################C###########",
+    ]
+    RONDAS = [
+        ([(7, 4), (27, 4), (27, 12), (23, 12), (23, 6), (7, 6)], 24.0),
+        ([(1, 12), (11, 12), (11, 9), (1, 9)], 20.0),
+        ([(13, 9), (19, 9), (16, 9), (16, 13), (28, 13), (16, 13), (16, 9)], 22.0),
+    ]
+    SEGUNDOS_CANDADO = 1.6
+
+    def preparar(self):
+        self.candados = []
+        for c, f in self.puntos["C"]:
+            rect = pygame.Rect(c * T, OY + f * T, T, T)
+            self.muros.append(rect)                   # La puerta es una pared
+            self.candados.append({"rect": rect, "hecho": False, "progreso": 0.0})
+        c, f = self.puntos["G"][0]
+        self.rect_oficina = pygame.Rect(c * T - 4, OY + f * T - 4, T + 8, T + 8)
+        self.vigilantes = [Vigilante(ronda, vel) for ronda, vel in self.RONDAS]
+
+    def hechos(self):
+        return sum(1 for k in self.candados if k["hecho"])
+
+    def volver_al_inicio(self):
+        super().volver_al_inicio()
+        for k in getattr(self, "candados", []):
+            k["progreso"] = 0.0
+
+    def actualizar_nivel(self, dt):
+        for v in self.vigilantes:
+            v.actualizar(dt)
+            if v.ve(self.px, self.py, self.muros):
+                self.fallar("¡TE VIERON! NADIE PUEDE SABERLO")
+                return
+        rj = self.rect_jugador()
+        for k in self.candados:
+            if k["hecho"]:
+                continue
+            if rj.inflate(8, 8).colliderect(k["rect"]):
+                antes = int(k["progreso"] * 4)
+                k["progreso"] += dt
+                if int(k["progreso"] * 4) != antes:
+                    self.sonar("paso", 0.5)      # Clic de la llave
+                if k["progreso"] >= self.SEGUNDOS_CANDADO:
+                    k["hecho"] = True
+                    self.sonar("ok")
+                    if self.hechos() == len(self.candados):
+                        self.avisar("LISTO. VUELVE A TU OFICINA", 3.0)
+                    else:
+                        self.avisar(f"CANDADO CAMBIADO ({self.hechos()}/{len(self.candados)})")
+            else:
+                k["progreso"] = max(0.0, k["progreso"] - dt * 2)
+        if self.hechos() == len(self.candados) and rj.colliderect(self.rect_oficina):
+            self.ganar()
+
+    def dibujar_nivel(self, l):
+        l.fill((22, 22, 26), (0, OY, W, 150))
+        for y in range(OY, OY + 150, 10):
+            l.fill((26, 26, 30), (0, y, W, 1))
+        candados = [k["rect"] for k in self.candados]
+        for m in self.muros:
+            if m in candados:
+                continue
+            l.fill((52, 50, 58), m)
+            l.fill((70, 68, 78), (m.x, m.y, m.w, 1))
+        # Oficina de Varela: alfombra y escritorio
+        o = self.rect_oficina
+        l.fill((60, 25, 25), (T, OY + T, 5 * T, 4 * T))
+        l.fill((90, 60, 35), (o.x + 2, o.y + 3, o.w - 4, 6))
+        # Puertas con candado
+        for k in self.candados:
+            r = k["rect"]
+            l.fill((110, 30, 30) if not k["hecho"] else (70, 70, 80), r)
+            l.fill((200, 200, 210) if k["hecho"] else (200, 170, 60), (r.centerx - 2, r.centery - 2, 4, 4))
+            if not k["hecho"] and int(self.t * 3) % 2 == 0:
+                l.set_at((r.centerx, r.y + 1), (255, 240, 160))
+            if 0 < k["progreso"] and not k["hecho"]:
+                ancho = int(12 * k["progreso"] / self.SEGUNDOS_CANDADO)
+                bx = min(max(r.centerx - 6, 1), W - 14)
+                by = min(max(r.y - 5, OY + 1), OY + 145)
+                l.fill((20, 20, 20), (bx - 1, by - 1, 14, 3))
+                l.fill((240, 210, 60), (bx, by, ancho, 1))
+        if self.rect_prueba:
+            l.fill((60, 58, 66), self.rect_prueba.inflate(4, 4))
+        self.dibujar_prueba(l)
+        cono = pygame.Surface((W, H), pygame.SRCALPHA)
+        for v in self.vigilantes:
+            v.dibujar_cono(cono)
+        l.blit(cono, (0, 0))
+        for v in self.vigilantes:
+            dibujar_operario(l, v.x - 3, v.y - 3, COLORES_TURNO_NOCHE, v.paso)
+            l.set_at((int(v.x + 4 * math.cos(v.dir)), int(v.y + 4 * math.sin(v.dir))), (255, 250, 200))
+        if self.hechos() == len(self.candados) and int(self.t * 2) % 2 == 0:
+            pygame.draw.rect(l, (240, 210, 60), self.rect_oficina, 1)
+
+    def dibujar_hud_extra(self, pantalla):
+        f = self.ctx["fuentes"]
+        n = self.hechos()
+        completo = n == len(self.candados)
+        texto = f"CANDADOS: {n}/{len(self.candados)}"
+        pantalla.blit(f["8bit"].render(texto, True, (240, 210, 60) if completo else (200, 120, 110)), (760, 66))
+
+
+MINIJUEGOS = {0: CintaVarela, 1: CintaWalter, 2: CintaMarta, 3: CintaTomas, 4: CintaRuben}
 
 
 def crear_minijuego(numero, ctx):

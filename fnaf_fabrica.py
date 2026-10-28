@@ -1105,10 +1105,22 @@ def dibujar_titulo_noche():
     pantalla.blit(capa, (0, 0))
 
 def cinta_disponible(n):
+    if n == 0:
+        return "cinta_cero" in progreso.logros
     return noche_desbloqueada > n or juego_completado_5_noches
 
+def numeros_archivo():
+    """Las 4 cintas y, si ya la encontraste, la cinta 0 al final."""
+    return (1, 2, 3, 4, 0) if cinta_disponible(0) else (1, 2, 3, 4)
+
+def tiene_prueba_cinta(n):
+    return progreso.stats["cinta0_prueba"] if n == 0 else n in evidencias
+
 def botones_archivo():
-    return [pygame.Rect(150 + (n - 1) * 230, 200, 210, 300) for n in (1, 2, 3, 4)]
+    numeros = numeros_archivo()
+    if len(numeros) == 4:
+        return [pygame.Rect(150 + i * 230, 200, 210, 300) for i in range(4)]
+    return [pygame.Rect(75 + i * 212, 200, 200, 300) for i in range(len(numeros))]
 
 RECT_ARCHIVO_VOLVER = pygame.Rect(ANCHO_VENTANA // 2 - 140, 590, 280, 50)
 
@@ -1119,15 +1131,16 @@ def dibujar_archivo():
     sub = fuente_pequeña.render(f"CINTAS RECUPERADAS DEL SISTEMA DE SEGURIDAD  //  PRUEBAS: {len(evidencias)}/4", True, (130, 160, 150))
     pantalla.blit(sub, (ANCHO_VENTANA // 2 - sub.get_width() // 2, 115))
     pos = pygame.mouse.get_pos()
-    for n, rect in zip((1, 2, 3, 4), botones_archivo()):
+    for n, rect in zip(numeros_archivo(), botones_archivo()):
         abierta = cinta_disponible(n)
         hover = abierta and rect.collidepoint(pos)
-        pygame.draw.rect(pantalla, (28, 34, 32) if hover else (16, 20, 20), rect, border_radius=8)
-        pygame.draw.rect(pantalla, (60, 160, 110) if abierta else (50, 55, 58), rect, 2, border_radius=8)
+        secreta = n == 0
+        pygame.draw.rect(pantalla, (28, 34, 32) if hover else ((24, 12, 12) if secreta else (16, 20, 20)), rect, border_radius=8)
+        pygame.draw.rect(pantalla, (200, 50, 50) if secreta else ((60, 160, 110) if abierta else (50, 55, 58)), rect, 2, border_radius=8)
         # Cassette
         c = pygame.Rect(rect.x + 30, rect.y + 25, rect.w - 60, 90)
         pygame.draw.rect(pantalla, (40, 40, 44) if abierta else (24, 26, 28), c, border_radius=6)
-        pygame.draw.rect(pantalla, (210, 200, 170) if abierta else (60, 60, 60), (c.x + 12, c.y + 10, c.w - 24, 30))
+        pygame.draw.rect(pantalla, ((200, 70, 60) if secreta else (210, 200, 170)) if abierta else (60, 60, 60), (c.x + 12, c.y + 10, c.w - 24, 30))
         for cx in (c.x + 45, c.right - 45):
             pygame.draw.circle(pantalla, (15, 15, 15), (cx, c.y + 65), 13)
             pygame.draw.circle(pantalla, (90, 90, 90), (cx, c.y + 65), 5)
@@ -1139,7 +1152,7 @@ def dibujar_archivo():
             for k, linea in enumerate([nombre, datos_c["titulo"].split("//")[-1].strip()]):
                 s_ = fuente_cam.render(linea, True, (220, 225, 220))
                 pantalla.blit(s_, (rect.centerx - s_.get_width() // 2, rect.y + 135 + k * 20))
-            if n in evidencias:
+            if tiene_prueba_cinta(n):
                 partes = partir_texto(T(datos_c["prueba"]), fuente_cam, rect.w - 20)
                 for k, linea in enumerate(["PRUEBA:"] + partes):
                     s_ = fuente_cam.render(linea, True, (255, 210, 90))
@@ -2475,7 +2488,7 @@ def revisar_eventos_desarrollo(eventos):
                 _buffer_digitos = ""
                 progreso.desbloquear("cinta_cero")
                 reproducir_sonido(sfx_glitch_8bit)
-                mostrar_relato(CINTA_SECRETA["titulo"], CINTA_SECRETA["lineas"], ir_al_menu, (220, 60, 60))
+                mostrar_relato(CINTA_SECRETA["titulo"], CINTA_SECRETA["lineas"], lambda: iniciar_minijuego(0, "MENU"), (220, 60, 60))
         if e.unicode and e.unicode.isalnum():
             _buffer_codigo = (_buffer_codigo + e.unicode.lower())[-len(CODIGO_DESARROLLO):]
             if _buffer_codigo == CODIGO_DESARROLLO.lower():
@@ -2978,7 +2991,13 @@ while True:
                 progreso.stats["cintas_fallos"] += minijuego_actual.intentos
                 if minijuego_actual.prueba and minijuego_actual.intentos == 0:
                     progreso.desbloquear("una_toma")
-            if minijuego_actual.prueba and minijuego_numero not in evidencias:
+            if minijuego_numero == 0:
+                # La cinta secreta tiene su propia prueba: no cuenta para el final verdadero
+                if minijuego_actual.prueba:
+                    progreso.stats["cinta0_prueba"] = True
+                if not minijuego_actual.salteado:
+                    progreso.desbloquear("del_otro_lado")
+            elif minijuego_actual.prueba and minijuego_numero not in evidencias:
                 evidencias.add(minijuego_numero)
             if len(evidencias) == 4:
                 progreso.desbloquear("archivista")
@@ -3104,7 +3123,7 @@ while True:
                 if RECT_ARCHIVO_VOLVER.collidepoint(evento.pos):
                     reproducir_sonido(sfx_linterna)
                     estado_actual = ESTADO_EXTRAS
-                for n, rect in zip((1, 2, 3, 4), botones_archivo()):
+                for n, rect in zip(numeros_archivo(), botones_archivo()):
                     if rect.collidepoint(evento.pos) and cinta_disponible(n):
                         reproducir_sonido(sfx_linterna)
                         iniciar_minijuego(n, "ARCHIVO")

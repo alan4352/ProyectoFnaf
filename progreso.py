@@ -30,6 +30,7 @@ ESTADISTICAS_POR_DEFECTO = {
     "llamadas_completas": [],     # Noches cuya llamada se escuchó entera
     "desafios": [],               # Desafíos de Custom Night superados
     "records_infinito": [],       # Mejores 5 tiempos del modo infinito (segundos)
+    "cinta0_prueba": False,       # Prueba de la cinta secreta (no cuenta para el final)
 }
 
 # (id, nombre, descripción, secreto)
@@ -53,6 +54,7 @@ LOGROS = [
     ("numero_equivocado", "NÚMERO EQUIVOCADO", "Recibe una llamada que no era para ti.", True),
     ("maraton", "MARATÓN", "Resiste 10 horas en el modo infinito.", False),
     ("cinta_cero", "0303", "Encuentra la cinta que nadie debía escuchar.", True),
+    ("del_otro_lado", "DEL OTRO LADO", "Completa la cinta 0.", True),
 ]
 NOMBRES_LOGROS = {l[0]: l for l in LOGROS}
 

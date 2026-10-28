@@ -149,6 +149,24 @@ CINTAS = {
         "prueba": "SECTOR B EVACUATION PLAN",
         "prueba_detalle": "All four emergency exits are crossed out by hand. Signed: E.V.",
     },
+    0: {
+        "titulo": "TAPE 0 // 02-MAR-1982 // 23:50",
+        "personaje": "ERNESTO VARELA, PLANT MANAGER",
+        "intro": [
+            "This time you are Ernesto Varela, the plant manager.",
+            "The Holloway Parks order ships tomorrow. Nobody leaves until it's done.",
+            "Change the padlocks on all four exits without the night shift seeing you.",
+        ],
+        "objetivo": "CHANGE THE 4 PADLOCKS AND RETURN TO YOUR OFFICE",
+        "pista": "Someone left a piece of paper in the tool room...",
+        "outro": [
+            "Varela closed the last padlock and put the keys in his desk.",
+            "He slept in the office that night. The furnaces stayed on.",
+            "Three hours later, none of the four exits would open.",
+        ],
+        "prueba": "LOCKSMITH RECEIPT",
+        "prueba_detalle": "'4 security padlocks. Paid in cash. E. Varela. No invoice.'",
+    },
     4: {
         "titulo": "TAPE 4 OF 4 // 03-MAR-1982 // 03:15 AM",
         "personaje": "RUBÉN 'RUSTY' ORTIZ, WAREHOUSE",

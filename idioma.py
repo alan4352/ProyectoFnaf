@@ -46,6 +46,8 @@ UI_EN = {
         "Applies to nights 1-6 starting next night. STORY: easier, to enjoy the story.",
     "Cambia el idioma de todo el juego.": "Changes the language of the whole game.",
     "SUBTÍTULOS DE SONIDOS": "SOUND SUBTITLES",
+    "¡TE VIERON! NADIE PUEDE SABERLO": "YOU WERE SEEN! NOBODY CAN KNOW", "LISTO. VUELVE A TU OFICINA": "DONE. GO BACK TO YOUR OFFICE",
+    "DEL OTRO LADO": "THE OTHER SIDE", "Completa la cinta 0.": "Complete tape 0.",
     "MODO INFINITO": "ENDLESS MODE", "Récord modo infinito": "Endless mode record", "RESISTISTE": "YOU LASTED", "RÉCORD": "RECORD", "¡NUEVO RÉCORD!": "NEW RECORD!",
     "MEJORES TIEMPOS": "BEST TIMES", "Sin 6 AM: cada hora son más rápidos. ¿Cuánto aguantas?":
         "No 6 AM: every hour they get faster. How long can you last?",
@@ -194,6 +196,8 @@ PATRONES_EN = [
     (r"^★ (.*)$", "★ {1}"),
     (r"^OBJETIVO: (.*)$", "OBJECTIVE: {1}"),
     (r"^PRUEBA ENCONTRADA: (.*)$", "EVIDENCE FOUND: {1}"),
+    (r"^CANDADOS: (.*)$", "PADLOCKS: {1}"),
+    (r"^CANDADO CAMBIADO \((.*)\)$", "PADLOCK CHANGED ({1})"),
     (r"^¡PRUEBA ENCONTRADA! (.*)$", "EVIDENCE FOUND! {1}"),
     (r"^INTENTOS: (\d+)   //   ESC: SALTAR$", "ATTEMPTS: {1}   //   ESC: SKIP"),
     (r"^VÁLVULA (\d+) CERRADA$", "VALVE {1} CLOSED"),
