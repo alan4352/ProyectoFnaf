@@ -47,6 +47,7 @@ AJUSTES_POR_DEFECTO = {
     "dificultad": "normal",     # "historia", "normal" o "pesadilla"
     "idioma": "es",             # "es" (español) o "en" (inglés)
     "subtitulos": False,        # Mostrar en pantalla los sonidos importantes
+    "teclas": {},               # Teclas cambiadas en AJUSTES > CONTROLES ({"puerta": "q", ...})
 }
 
 def ruta_ajustes():
