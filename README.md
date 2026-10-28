@@ -23,8 +23,12 @@ traducción al inglés en `historia_en.py`.
   verdadero) con un enemigo nuevo: la **Unidad 0**, que solo se mueve cuando nadie la mira.
 - **4 cintas de 1982** (minijuegos de 8 bits) con una prueba escondida cada una y **dos finales**.
 - **Custom Night** con IA de 0 a 20 y **5 desafíos** con reglas especiales.
-- **18 logros** (algunos secretos) y **estadísticas** de toda la partida, con un resumen y créditos al terminar.
+- **Modo infinito** (en la Custom Night): no hay 6 AM, cada hora son más rápidos y se guardan tus 5 mejores tiempos.
+- **20 logros** (algunos secretos) y **estadísticas** de toda la partida, con un resumen y créditos al terminar.
 - **Tutorial** guiado en la noche 1, **dificultad** Historia / Normal / Pesadilla e idioma **español / inglés**.
+- **Subtítulos de sonidos** (opcional): muestran pasos, golpes y respiraciones, y de qué lado vienen.
+- **Teclas configurables** y soporte para **mando** (joystick).
+- **Versión web**: se puede jugar en el navegador (ver más abajo).
 - Algunos **secretos** raros... (una pista: mira bien la pared de la oficina).
 
 ## Cómo jugar
@@ -70,6 +74,23 @@ Para publicarlo (itch.io o GitHub), seguí `publicacion/PUBLICAR.md`; el texto p
 | Pantalla completa | `F11` |
 | Ajustes (volumen, brillo, pantalla...) | Botón AJUSTES en el menú principal o en la pausa |
 
+Las teclas de la oficina se pueden cambiar en **AJUSTES > CONTROLES / MANDO** (se guardan en `ajustes.json`).
+
+### Mando
+
+Se detecta solo al conectarlo. El stick izquierdo mueve un cursor (como el mouse) y en las cintas mueve al
+personaje.
+
+| Botón (Xbox) | Acción |
+|---|---|
+| A | Clic |
+| B | Clic derecho (linterna, visión IR, compuerta de ducto) |
+| X | Compuerta |
+| Y | Cámaras |
+| LB / RB | Mirar al techo / Panel de mantenimiento |
+| BACK / START | Visión nocturna / Pausa |
+| Cruceta | Flechas (techo, volver, moverse por los menús) |
+
 ## Animatrónicos
 
 - **Barnaby**: viene por el pasillo (CAM_07). Encandilalo con la linterna antes de que llegue.
@@ -82,6 +103,24 @@ A las 2, 3 y 4 AM se vuelven más agresivos.
 
 **Unidad 0** (noche 6): recorre cuatro cámaras y avanza cuando pasa mucho tiempo sin que la mires.
 Cuando llega al pasillo (CAM_07), mírala fijo unos segundos para que retroceda.
+
+## Versión web (navegador)
+
+La versión web se arma con [pygbag](https://pypi.org/project/pygbag/):
+
+```
+pip install pygbag
+python herramientas/preparar_web.py --compilar
+python -m pygbag build_web        # para probarla en http://localhost:8000
+```
+
+`preparar_web.py` copia el juego a `build_web/` y convierte el bucle principal para que funcione en el navegador
+(el código de escritorio no se toca). En el navegador el progreso se guarda en el almacenamiento de la página, y
+el efecto CRT arranca apagado porque baja mucho los FPS.
+
+En GitHub, cada push arma la versión web (workflow **Version web**, zip `FNAF_Industrial-web`, listo para subir a
+itch.io como juego HTML5). Desde `main` además se publica en GitHub Pages, si está activado en
+*Settings > Pages > Source: GitHub Actions*.
 
 ## Archivos del proyecto
 
@@ -100,6 +139,9 @@ Cuando llega al pasillo (CAM_07), mírala fijo unos segundos para que retroceda.
 | `idioma.py` | Traducción de la interfaz al inglés (diccionario de textos) |
 | `progreso.py` | Estadísticas y logros |
 | `unidad0.py` | El enemigo de la noche 6 |
+| `controles.py` | Teclas configurables de la oficina |
+| `mando.py` | Soporte para mando (joystick) |
+| `herramientas/preparar_web.py` | Arma la versión web (pygbag) |
 | `datos.py` | También: niveles de dificultad y desafíos de la Custom Night |
 
 ### Modo desarrollador
@@ -125,7 +167,8 @@ Con el modo desarrollador activo no se ganan logros (las estadísticas sí se cu
 ## Ajustes
 
 Desde el menú principal o la pausa: volumen general, efectos, música/ambiente y voces; brillo;
-efecto CRT; pantalla completa; escalado de imagen; velocidad de giro y FPS.
+efecto CRT; pantalla completa; escalado de imagen; velocidad de giro; FPS; dificultad; idioma;
+subtítulos de sonidos y controles (teclas y mando).
 Se guardan solos en `ajustes.json`, junto al juego.
 
 El juego se dibuja en 1200×700 (proporción 12:7). En monitores con otra proporción (5:4, 16:10, 16:9)

@@ -41,7 +41,7 @@ def tiempo_juego():
 # Si ponés MODO_DESARROLLO = True, el juego arranca con el modo ya activado.
 MODO_DESARROLLO = False
 CODIGO_DESARROLLO = "dunmore"
-VERSION = "1.0"
+VERSION = "1.1"
 pygame.init()
 pygame.mixer.init(frequency=44100, size=-16, channels=2, buffer=512)
 pygame.mixer.set_num_channels(24)
