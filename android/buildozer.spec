@@ -8,7 +8,9 @@ package.domain = io.github.alan4352
 source.dir = .
 source.include_exts = py,png,jpg,ogg,wav,mp3,ttf,json
 version = 1.1
-requirements = python3,pygame==2.6.1
+requirements = python3,pygame
+p4a.local_recipes = ./recipes
+source.exclude_dirs = recipes, bin
 orientation = landscape
 fullscreen = 1
 icon.filename = %(source.dir)s/assets/icono.png

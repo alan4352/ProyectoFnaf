@@ -34,6 +34,7 @@ def preparar():
     os.remove(os.path.join(DESTINO, "fnaf_fabrica.py"))
     shutil.copytree(os.path.join(RAIZ, "assets"), os.path.join(DESTINO, "assets"))
     shutil.copy2(os.path.join(RAIZ, "android", "buildozer.spec"), DESTINO)
+    shutil.copytree(os.path.join(RAIZ, "android", "recipes"), os.path.join(DESTINO, "recipes"))
     print("Listo:", DESTINO)
 
 
