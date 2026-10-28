@@ -59,6 +59,9 @@ jobs:
       name: github-pages
       url: ${{ steps.publicar.outputs.page_url }}
     steps:
+      # Si todavía no activaste Pages (Settings > Pages > Source: GitHub Actions) este paso
+      # avisa pero no marca error: el zip para itch.io igual queda en "compilar".
       - name: Publicar en GitHub Pages
         id: publicar
+        continue-on-error: true
         uses: actions/deploy-pages@v4
