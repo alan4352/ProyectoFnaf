@@ -72,7 +72,8 @@ jobs:
       - name: Mostrar el registro
         if: always()
         run: |
-          grep -iE "python|SDL|pygame|AndroidRuntime|FATAL|DEBUG  |libc|crash|Error" prueba/logcat.txt | tail -n 250 || true
+          cat prueba/proceso.txt prueba/pantalla.txt || true
+          grep " python  " prueba/logcat.txt | tail -n 80 || true
 
       - name: Subir registro y capturas
         if: always()
