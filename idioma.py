@@ -59,6 +59,10 @@ UI_EN = {
     "VISIÓN NOCTURNA (EN CÁMARAS)": "NIGHT VISION (ON CAMERAS)", "COMPUERTA": "DOOR",
     "CLIC": "CLICK", "CLIC DERECHO / LINTERNA": "RIGHT-CLICK / FLASHLIGHT", "CÁMARAS": "CAMERAS",
     "VISIÓN NOCTURNA": "NIGHT VISION", "CURSOR / MOVERSE": "CURSOR / MOVE", "CRUCETA": "D-PAD", "FLECHAS": "ARROWS",
+    "BOTONES TÁCTILES": "TOUCH BUTTONS", "AUTOMÁTICO": "AUTOMATIC", "LINTERNA": "FLASHLIGHT", "TECHO": "CEILING",
+    "BAJAR": "DOWN", "SELLAR": "SEAL", "VISIÓN IR": "IR VISION",
+    "Botones en pantalla para jugar con el dedo (linterna, techo, pausa...). AUTOMÁTICO: solo en celulares.":
+        "On-screen buttons to play with your finger (flashlight, ceiling, pause...). AUTOMATIC: phones only.",
     "MODO INFINITO": "ENDLESS MODE", "[ESC] PARA CONTINUAR": "[ESC] TO CONTINUE", "Récord modo infinito": "Endless mode record", "RESISTISTE": "YOU LASTED", "RÉCORD": "RECORD", "¡NUEVO RÉCORD!": "NEW RECORD!",
     "MEJORES TIEMPOS": "BEST TIMES", "Sin 6 AM: cada hora son más rápidos. ¿Cuánto aguantas?":
         "No 6 AM: every hour they get faster. How long can you last?",

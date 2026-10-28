@@ -18,6 +18,7 @@ from unidad0 import Unidad0, POSICIONES as POS_UNIDAD0, SEGUNDOS_PARA_RECHAZAR
 import idioma
 import controles as mapa_teclas
 import mando
+import tactil
 from idioma import T, FuenteTraducible
 import historia as historia_es
 import historia_en
@@ -43,7 +44,10 @@ MODO_DESARROLLO = False
 CODIGO_DESARROLLO = "dunmore"
 VERSION = "1.1"
 pygame.init()
-pygame.mixer.init(frequency=44100, size=-16, channels=2, buffer=512)
+try:
+    pygame.mixer.init(frequency=44100, size=-16, channels=2, buffer=512)
+except pygame.error:
+    pygame.mixer.init()   # Algunos celulares no aceptan ese formato: se usa el que tengan
 pygame.mixer.set_num_channels(24)
 pygame.mixer.set_reserved(3)
 CANAL_AMBIENTE = pygame.mixer.Channel(0)   # Zumbido de fábrica en bucle durante la noche
@@ -58,6 +62,8 @@ ALTO_OFICINA = 700
 # Ajustes del jugador (ajustes.json) y ventana con escalado propio (ver ventana.py)
 AJUSTES = cargar_ajustes()
 mapa_teclas.cargar(AJUSTES)
+tactil.modo = AJUSTES.get("tactil", "auto")
+tactil.detectar_web()
 import audio as modulo_audio
 modulo_audio.AJUSTES_AUDIO = AJUSTES
 import ventana
@@ -81,8 +87,11 @@ pantalla_camaras = pygame.Surface((ANCHO_VENTANA, ALTO_VENTANA))
 # 1. Fuentes Tipográficas
 # -------------------------------------------------------------
 def cargar_fuente(tamaño, negrita=False):
-    for f in ["consolas", "lucidaconsole", "couriernew", "arial"]:
-        font_match = pygame.font.match_font(f)
+    for f in ([] if tactil.ES_ANDROID else ["consolas", "lucidaconsole", "couriernew", "arial"]):
+        try:
+            font_match = pygame.font.match_font(f)
+        except Exception:
+            font_match = None
         if font_match:
             try:
                 fn = FuenteTraducible(font_match, tamaño)
@@ -855,6 +864,25 @@ infinito_ultimo = 0.0
 def TK(plantilla):
     """Traduce un texto de ayuda y le pone las teclas que eligió el jugador ({puerta}, {bajar_alt}...)."""
     return T(plantilla).format(**mapa_teclas.etiquetas())
+
+def contexto_tactil():
+    """Qué botones táctiles se muestran según lo que está pasando."""
+    if estado_actual == ESTADO_MINIJUEGO:
+        return {"cruz"} if minijuego_actual and minijuego_actual.fase == "juego" else set()
+    if estado_actual != ESTADO_JUEGO or pausado or juego_terminado or en_jumpscare:
+        return set()
+    if en_apagon or panel_mantenimiento_abierto:
+        return {"pausa"}
+    if monitor_abierto:
+        botones = {"pausa", "clic_largo"}
+        if not modo_ventilacion and not modificadores.get("sin_ir"):
+            botones.add("ir")
+        return botones
+    if mirando_techo:
+        return {"pausa", "bajar", "sellar"}
+    return {"pausa", "linterna", "techo"}
+
+tactil.contexto = contexto_tactil
 
 def es_infinito():
     return noche_actual == "INFINITO"
@@ -2426,6 +2454,7 @@ OPCIONES_AJUSTES = [
     ("dificultad", "DIFICULTAD (HISTORIA)", "opciones", [(k, v["nombre"]) for k, v in DIFICULTADES.items()]),
     ("idioma", "IDIOMA / LANGUAGE", "opciones", [("es", "ESPAÑOL"), ("en", "ENGLISH")]),
     ("subtitulos", "SUBTÍTULOS DE SONIDOS", "si_no", None),
+    ("tactil", "BOTONES TÁCTILES", "opciones", [("auto", "AUTOMÁTICO"), ("si", "SÍ"), ("no", "NO")]),
 ]
 AYUDA_AJUSTES = {
     "escalado": "AJUSTAR mantiene la imagen sin deformar (puede dejar bordes negros). ESTIRAR llena toda la pantalla.",
@@ -2435,6 +2464,7 @@ AYUDA_AJUSTES = {
     "pantalla_completa": "También se cambia en cualquier momento con F11.",
     "dificultad": "Se aplica a las noches 1 a 6 desde la próxima noche. HISTORIA: más fácil, para ver la historia.",
     "idioma": "Cambia el idioma de todo el juego.",
+    "tactil": "Botones en pantalla para jugar con el dedo (linterna, techo, pausa...). AUTOMÁTICO: solo en celulares.",
     "subtitulos": "Muestra en pantalla los sonidos importantes (pasos, respiración, golpes) y de qué lado vienen.",
 }
 Y_AJUSTES, ALTO_FILA_AJUSTES = 96, 34
@@ -2457,6 +2487,8 @@ def cambiar_ajuste(clave, direccion=1, valor=None):
         crt_activo = AJUSTES["crt"]
     if clave == "idioma":
         aplicar_idioma()
+    if clave == "tactil":
+        tactil.modo = AJUSTES["tactil"]
     if clave in ("pantalla_completa", "escalado"):
         ventana.aplicar_modo()
     if clave in ("vol_general", "vol_musica", "vol_voces"):
@@ -3762,7 +3794,10 @@ while True:
 
     if not juego_terminado:
         if not monitor_abierto and not mirando_techo and not persiana_der_sostenida and not panel_mantenimiento_abierto and progreso_monitor <= 0.2:
-            if mouse_pos[0] < 150:
+            if tactil.activo():
+                # Con el dedo: arrastrar la vista (hacia la derecha se ve lo de la izquierda)
+                cam_x -= tactil.tomar_arrastre() * AJUSTES["vel_giro"] / 100.0
+            elif mouse_pos[0] < 150:
                 cam_x -= 650 * AJUSTES["vel_giro"] / 100.0 * dt
             elif mouse_pos[0] > ANCHO_VENTANA - 150:
                 cam_x += 650 * AJUSTES["vel_giro"] / 100.0 * dt

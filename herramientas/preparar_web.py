@@ -23,7 +23,8 @@ import sys
 RAIZ = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DESTINO = os.path.join(RAIZ, "build_web")
 MODULOS = ["audio.py", "controles.py", "datos.py", "efectos.py", "guardado.py", "historia.py", "historia_en.py",
-           "idioma.py", "mando.py", "minijuegos.py", "progreso.py", "recursos.py", "unidad0.py", "ventana.py"]
+           "idioma.py", "mando.py", "minijuegos.py", "progreso.py", "recursos.py", "tactil.py", "unidad0.py",
+           "ventana.py"]
 
 
 def nombres_asignados(nodo):
@@ -87,6 +88,9 @@ def preparar():
     if os.path.isdir(DESTINO):
         shutil.rmtree(DESTINO)
     os.makedirs(DESTINO)
+    faltan = sorted(n for n in os.listdir(RAIZ) if n.endswith(".py") and n != "fnaf_fabrica.py" and n not in MODULOS)
+    if faltan:
+        raise SystemExit("Agregá estos módulos a MODULOS en preparar_web.py: " + ", ".join(faltan))
     for m in MODULOS:
         shutil.copy2(os.path.join(RAIZ, m), DESTINO)
     shutil.copytree(os.path.join(RAIZ, "assets"), os.path.join(DESTINO, "assets"))
