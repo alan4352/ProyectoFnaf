@@ -35,7 +35,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y autoconf automake libtool pkg-config zlib1g-dev libncurses-dev \
-            cmake libffi-dev libssl-dev zip unzip ccache
+            cmake libffi-dev libssl-dev zip unzip ccache libltdl-dev
           pip install buildozer cython
 
       - name: Preparar carpeta
@@ -51,7 +51,9 @@ jobs:
 
       - name: Compilar APK
         working-directory: build_android
-        run: yes | buildozer android debug 2>&1 | tail -n 400
+        run: |
+          set -o pipefail
+          yes | buildozer android debug 2>&1 | tail -n 400
 
       - name: Revisar el APK
         run: |
