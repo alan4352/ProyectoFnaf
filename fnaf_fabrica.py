@@ -852,13 +852,10 @@ infinito_registrado = False
 infinito_record_nuevo = False
 infinito_ultimo = 0.0
 
-<<<<<< mejoras-2
 def TK(plantilla):
     """Traduce un texto de ayuda y le pone las teclas que eligió el jugador ({puerta}, {bajar_alt}...)."""
     return T(plantilla).format(**mapa_teclas.etiquetas())
 
-=======
->>>>>> main
 def es_infinito():
     return noche_actual == "INFINITO"
 
@@ -2476,14 +2473,9 @@ def controles_fila_ajuste(i):
     barra = pygame.Rect(menos.right + 12, y + 8, mas.left - menos.right - 24, 10)
     return fila, menos, mas, barra
 
-<<<<<< mejoras-2
 RECT_AJ_RESTABLECER = pygame.Rect(ANCHO_VENTANA // 2 - 420, 606, 260, 46)
 RECT_AJ_CONTROLES = pygame.Rect(ANCHO_VENTANA // 2 - 130, 606, 260, 46)
 RECT_AJ_VOLVER = pygame.Rect(ANCHO_VENTANA // 2 + 160, 606, 260, 46)
-=======
-RECT_AJ_RESTABLECER = pygame.Rect(ANCHO_VENTANA // 2 - 300, 606, 280, 46)
-RECT_AJ_VOLVER = pygame.Rect(ANCHO_VENTANA // 2 + 20, 606, 280, 46)
->>>>>> main
 
 def dibujar_menu_ajustes():
     if ajustes_volver_a == "PAUSA":
