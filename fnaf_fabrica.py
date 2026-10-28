@@ -10,7 +10,7 @@ from recursos import *      # rutas y carga de imágenes/sonidos
 from audio import *         # sonidos sintéticos y reales
 from guardado import *      # save_data.json
 from datos import *         # dificultad, diálogos, cámaras, rutas
-from efectos import aplicar_crt, cortes_glitch, separar_rgb, linea_tracking
+from efectos import aplicar_crt, cortes_glitch, separar_rgb, linea_tracking, ruido
 from historia import *      # textos de la historia: llamadas, cintas, finales
 from minijuegos import crear_minijuego, Relato
 from progreso import Progreso, LOGROS, NOMBRES_LOGROS, formato_tiempo
@@ -353,6 +353,8 @@ def aplicar_postprocesado_crt(dt, intensidad_aberracion=1):
 # -------------------------------------------------------------
 # 6. Renderizado Auxiliar de Sprites
 # -------------------------------------------------------------
+_sprites_escalados = {}
+
 def dibujar_sprite_centrado(superficie, img, cx, cy, escala=1.0, brillo=255, vivo=False):
     """vivo=True: leve "respiración" y tirones de señal ocasionales (para cámaras)."""
     if img and vivo:
@@ -362,11 +364,21 @@ def dibujar_sprite_centrado(superficie, img, cx, cy, escala=1.0, brillo=255, viv
             cx += random.randint(-7, 7)
             cy += random.randint(-3, 3)
     if img:
+        escala = round(escala, 3)   # Así se puede reusar la imagen ya agrandada (escalar es caro)
         w = int(img.get_width() * escala)
         h = int(img.get_height() * escala)
-        escalada = pygame.transform.scale(img, (w, h))
-        if brillo < 255:
-            escalada.set_alpha(brillo)
+        brillo = max(0, min(255, int(brillo)))
+        clave = (id(img), w, h, brillo)
+        escalada = _sprites_escalados.get(clave)
+        if escalada is None:
+            if len(_sprites_escalados) > 160:
+                _sprites_escalados.clear()
+            escalada = pygame.transform.scale(img, (w, h))
+            if brillo < 255:
+                # La transparencia se "hornea" en la imagen: dibujarla así es mucho más rápido
+                escalada = escalada.convert_alpha()
+                escalada.fill((255, 255, 255, brillo), special_flags=pygame.BLEND_RGBA_MULT)
+            _sprites_escalados[clave] = escalada
         superficie.blit(escalada, (cx - w // 2, cy - h // 2))
     else:
         radio = int(45 * escala)
@@ -931,6 +943,7 @@ def texto_tiempo_infinito(segundos):
 
 # Parpadeo de la luz de la oficina: más seguido a medida que avanza la noche y baja la batería
 parpadeo_luz_hasta = 0.0
+_sombras_parpadeo = []
 parpadeo_luz_proximo = 0.0
 
 def dibujar_parpadeo_luz():
@@ -942,8 +955,14 @@ def dibujar_parpadeo_luz():
         parpadeo_luz_proximo = ahora_p + random.uniform(espera * 0.6, espera * 1.4)
         parpadeo_luz_hasta = ahora_p + random.uniform(0.15, 0.45)
     if ahora_p < parpadeo_luz_hasta and int(ahora_p * 28) % 3 != 0:
-        nivel = random.choice([70, 110, 150])
-        pantalla.fill((nivel, nivel, nivel), special_flags=pygame.BLEND_RGB_MULT)
+        # Una capa negra semitransparente (multiplicar los colores de toda la pantalla es muy lento)
+        if not _sombras_parpadeo:
+            for nivel in (70, 110, 150):
+                sombra = pygame.Surface((ANCHO_VENTANA, ALTO_VENTANA))
+                sombra.fill((0, 0, 0))
+                sombra.set_alpha(255 - nivel)
+                _sombras_parpadeo.append(sombra)
+        pantalla.blit(random.choice(_sombras_parpadeo), (0, 0))
 
 # Subtítulos de sonidos (accesibilidad): texto, lado (-1 izquierda, 0 centro, 1 derecha), hasta cuándo
 subtitulos_activos = []
@@ -1582,19 +1601,27 @@ def superficie_persiana(progreso):
     _cache_persiana[paso] = (sup, y_min)
     return _cache_persiana[paso]
 
+_capas_vidrio = {}
+
 def dibujar_ventana_con_imagen(luz_der_efectiva):
     poli = poligono_vidrio()
     xs = [p[0] for p in poli]; ys = [p[1] for p in poli]
     bbox = pygame.Rect(min(xs), min(ys), max(xs) - min(xs), max(ys) - min(ys))
     poli_local = [(x - bbox.x, y - bbox.y) for x, y in poli]
 
-    # Oscuridad / luz del otro lado del vidrio
-    capa = pygame.Surface(bbox.size, pygame.SRCALPHA)
-    pygame.draw.polygon(capa, (0, 0, 0, 45) if luz_der_efectiva else (0, 0, 0, 185), poli_local)
+    # Oscuridad / luz del otro lado del vidrio (las capas se arman una vez)
+    clave_vidrio = (tuple(poli_local), luz_der_efectiva)
+    if clave_vidrio not in _capas_vidrio:
+        capa = pygame.Surface(bbox.size, pygame.SRCALPHA)
+        pygame.draw.polygon(capa, (0, 0, 0, 45) if luz_der_efectiva else (0, 0, 0, 185), poli_local)
+        brillo = None
+        if luz_der_efectiva:
+            brillo = pygame.Surface(bbox.size, pygame.SRCALPHA)
+            pygame.draw.polygon(brillo, (45, 42, 22, 0), poli_local)
+        _capas_vidrio[clave_vidrio] = (capa, brillo)
+    capa, brillo = _capas_vidrio[clave_vidrio]
     superficie_oficina.blit(capa, bbox.topleft)
-    if luz_der_efectiva:
-        brillo = pygame.Surface(bbox.size, pygame.SRCALPHA)
-        pygame.draw.polygon(brillo, (45, 42, 22, 0), poli_local)
+    if brillo:
         superficie_oficina.blit(brillo, bbox.topleft, special_flags=pygame.BLEND_RGB_ADD)
 
     # Rusty Bunny detrás del vidrio (recortado con la forma de la ventana)
@@ -1613,6 +1640,8 @@ def dibujar_ventana_con_imagen(luz_der_efectiva):
         superficie_oficina.blit(sup, (VENT_X0, y_min))
         if CAPA_CADENA:
             superficie_oficina.blit(*CAPA_CADENA)
+
+_huecos_puerta = {}
 
 def dibujar_oficina_con_imagen(luz_izq_efectiva, luz_der_efectiva):
     # Fondo alternativo opcional: si existe oficina_puerta_abierta.png se usa con la puerta abierta
@@ -1660,12 +1689,15 @@ def dibujar_oficina_con_imagen(luz_izq_efectiva, luz_der_efectiva):
     # La imagen ya muestra la puerta blindada cerrada. Con la puerta abierta se dibuja el hueco oscuro.
     rp = RECT_PUERTA_IMG
     if not puerta_izq_cerrada and not ASSETS.get("oficina_puerta_abierta"):
-        hueco = pygame.Surface(rp.size)
         base = (34, 32, 20) if luz_izq_efectiva else (5, 6, 7)
-        hueco.fill(base)
-        for i in range(0, rp.height, 4):   # degradé: más oscuro arriba y al fondo
-            k = 0.55 + 0.45 * (i / rp.height)
-            pygame.draw.line(hueco, tuple(int(c * k) for c in base), (0, i), (rp.width, i), 4)
+        hueco = _huecos_puerta.get(base)
+        if hueco is None:
+            hueco = pygame.Surface(rp.size)
+            hueco.fill(base)
+            for i in range(0, rp.height, 4):   # degradé: más oscuro arriba y al fondo
+                k = 0.55 + 0.45 * (i / rp.height)
+                pygame.draw.line(hueco, tuple(int(c * k) for c in base), (0, i), (rp.width, i), 4)
+            _huecos_puerta[base] = hueco
         superficie_oficina.blit(hueco, rp.topleft)
         pygame.draw.rect(superficie_oficina, (40, 38, 34), rp, 10)
         pygame.draw.rect(superficie_oficina, (12, 12, 12), rp, 3)
@@ -1824,6 +1856,22 @@ def dibujar_feed_ventilacion():
         pos_x, pos_y, esc_s = con_pose(silas, 460, 335, 0.70)
         dibujar_sprite_centrado(pantalla_camaras, sprite("silas_vent"), pos_x, pos_y, esc_s, 225, vivo=True)
 
+_capas_nv = []
+
+def capas_vision_nocturna():
+    """El brillo verde y las líneas de la visión nocturna: se arman una sola vez."""
+    if not _capas_nv:
+        capa = pygame.Surface((720, 480), pygame.SRCALPHA)
+        capa.fill((45, 210, 95, 45))
+        pygame.draw.circle(capa, (170, 255, 190, 50), (360, 240), 210)
+        lineas = pygame.Surface((720, 480))
+        lineas.fill((0, 0, 0))
+        lineas.set_colorkey((0, 0, 0))
+        for y_nv in range(0, 480, 6):
+            pygame.draw.line(lineas, (20, 90, 40), (0, y_nv), (720, y_nv), 1)
+        _capas_nv.extend([capa, lineas])
+    return _capas_nv
+
 def dibujar_sistema_camaras():
     pantalla_camaras.fill((8, 12, 10))
 
@@ -1937,12 +1985,9 @@ def dibujar_sistema_camaras():
     # Efecto Visión Nocturna IR dentro del recuadro
     if not error_camaras:
         if vision_nocturna_cam:
-            overlay_nv = pygame.Surface((720, 480), pygame.SRCALPHA)
-            overlay_nv.fill((45, 210, 95, 45))
-            pygame.draw.circle(overlay_nv, (170, 255, 190, 50), (360, 240), 210)
-            pantalla_camaras.blit(overlay_nv, (100, 80), special_flags=pygame.BLEND_RGBA_ADD)
-            for y_nv in range(80, 560, 6):
-                pygame.draw.line(pantalla_camaras, (20, 90, 40), (100, y_nv), (820, y_nv), 1)
+            capa_nv, lineas_nv = capas_vision_nocturna()
+            pantalla_camaras.blit(capa_nv, (100, 80), special_flags=pygame.BLEND_RGBA_ADD)
+            pantalla_camaras.blit(lineas_nv, (100, 80))
 
             anomalia_detectada = any(camara_seleccionada in str(a.ruta[a.nodo_actual]) for a in [barnaby, silas, penny, bunny])
             global anomalia_detectada_previa
@@ -1979,11 +2024,7 @@ def dibujar_sistema_camaras():
 
     # Ruido estático analógico dentro del marco
     densidad = 1800 if error_camaras or camara_seleccionada == "CAM_03" else 450
-    for _ in range(densidad):
-        rx = random.randint(100, 820)
-        ry = random.randint(80, 560)
-        g = random.randint(25, 160)
-        pantalla_camaras.set_at((rx, ry), (g, g, g))
+    ruido(pantalla_camaras, rect_pantalla_cctv, densidad)
 
     # --- 2. LIBERAR RECORTE PARA DIBUJAR MARCO, MAPA Y BOTONES EXTERIORES ---
     pantalla_camaras.set_clip(None)
@@ -2067,10 +2108,13 @@ def dibujar_jumpscare(progreso):
         t = min(1.0, progreso / 0.15)
         factor = 0.72 + 0.28 * (1 - (1 - t) ** 3)
         w, h = int(img_js.get_width() * factor), int(img_js.get_height() * factor)
-        frame = pygame.transform.scale(img_js, (w, h))
-        # Parpadeo de señal: algunos cuadros salen oscurecidos
-        if random.random() < 0.12:
-            frame.fill((90, 90, 90), special_flags=pygame.BLEND_RGB_MULT)
+        oscuro = random.random() < 0.12   # Parpadeo de señal: algunos cuadros salen oscurecidos
+        if factor >= 0.999 and not oscuro:
+            frame = img_js
+        else:
+            frame = pygame.transform.scale(img_js, (w, h))
+            if oscuro:
+                frame.fill((90, 90, 90), special_flags=pygame.BLEND_RGB_MULT)
         pantalla.blit(frame, (cx - w // 2, cy - h // 2))
         # Señal rota: franjas corridas y colores separados (más fuerte al principio)
         if random.random() < (0.55 if progreso < 0.35 else 0.2):
@@ -2088,10 +2132,7 @@ def dibujar_jumpscare(progreso):
     if random.random() < 0.4:
         cortes_glitch(pantalla, 6, 50)
 
-    for _ in range(450):
-        rx = random.randint(0, ANCHO_VENTANA)
-        ry = random.randint(0, ALTO_VENTANA)
-        pantalla.set_at((rx, ry), (220, 220, 220))
+    ruido(pantalla, pantalla.get_rect(), 450, (220, 220))
 
 # -------------------------------------------------------------
 # 16. Subtítulos, Menús y Periódico de Victoria
@@ -2160,9 +2201,7 @@ def dibujar_fondo_menu():
     linea_tracking(pantalla, t, pantalla.get_rect(), velocidad=40.0)
     if t % duracion < 0.35 or t % duracion > duracion - 0.1:
         pantalla.fill((10, 12, 12))
-        for _ in range(2500):
-            g = random.randint(30, 150)
-            pantalla.set_at((random.randrange(ANCHO_VENTANA), random.randrange(ALTO_VENTANA)), (g, g, g))
+        ruido(pantalla, pantalla.get_rect(), 2500, (30, 150))
     else:
         txt = fuente_cam.render(etiqueta, True, (150, 170, 160))
         pantalla.blit(txt, (ANCHO_VENTANA - txt.get_width() - 20, 18))
@@ -2212,10 +2251,7 @@ def dibujar_menu_principal():
     txt_ver = fuente_cam.render(f"v{VERSION}", True, (70, 80, 85))
     pantalla.blit(txt_ver, (ANCHO_VENTANA - txt_ver.get_width() - 12, ALTO_VENTANA - 22))
 
-    for _ in range(400):
-        rx = random.randint(0, ANCHO_VENTANA)
-        ry = random.randint(0, ALTO_VENTANA)
-        pantalla.set_at((rx, ry), (random.randint(25, 100), random.randint(25, 100), random.randint(25, 100)))
+    ruido(pantalla, pantalla.get_rect(), 400, (25, 100), colores=True)
 
     return opciones
 
@@ -2399,18 +2435,21 @@ def dibujar_menu_pausa():
         botones.append((clave, rect))
     return botones
 
+_caras_muerte = {}
+
 def dibujar_pantalla_muerte():
     pantalla.fill((6, 4, 4))
     img = ASSETS.get(f"jumpscare_{animatronico_atacante}")
     if img:
-        cara = img.copy()
-        cara.fill((70, 45, 45), special_flags=pygame.BLEND_RGB_MULT)
+        cara = _caras_muerte.get(animatronico_atacante)
+        if cara is None:
+            cara = img.copy()
+            cara.fill((70, 45, 45), special_flags=pygame.BLEND_RGB_MULT)
+            _caras_muerte[animatronico_atacante] = cara
         dx = random.randint(-3, 3) if random.random() < 0.15 else 0
         pantalla.blit(cara, ((ANCHO_VENTANA - cara.get_width()) // 2 + dx, (ALTO_VENTANA - cara.get_height()) // 2))
     # Estática y franjas de interferencia
-    for _ in range(1400):
-        g = random.randint(30, 140)
-        pantalla.set_at((random.randrange(ANCHO_VENTANA), random.randrange(ALTO_VENTANA)), (g, g, g))
+    ruido(pantalla, pantalla.get_rect(), 1400, (30, 140))
     if random.random() < 0.3:
         y = random.randrange(ALTO_VENTANA)
         pantalla.fill((60, 20, 20), (0, y, ANCHO_VENTANA, random.randint(3, 14)), special_flags=pygame.BLEND_RGB_ADD)
@@ -3968,9 +4007,10 @@ while True:
     elif mirando_techo:
         dibujar_vista_techo()
     else:
-        dibujar_oficina()
-        pantalla.blit(superficie_oficina, (0, 0), (int(cam_x), 0, ANCHO_VENTANA, ALTO_VENTANA))
-        dibujar_parpadeo_luz()
+        if progreso_monitor < 1.0:   # Con el monitor abierto del todo la oficina no se ve: no se dibuja
+            dibujar_oficina()
+            pantalla.blit(superficie_oficina, (0, 0), (int(cam_x), 0, ANCHO_VENTANA, ALTO_VENTANA))
+            dibujar_parpadeo_luz()
 
         if progreso_monitor > 0.0:
             dibujar_sistema_camaras()

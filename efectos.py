@@ -93,3 +93,30 @@ def linea_tracking(sup, t, rect, velocidad=55.0):
             sup.blit(franja, (rect.x + dx, fy))
             if k % 6 == 0:
                 sup.fill((22, 24, 22), (rect.x, fy, rect.w, 1), special_flags=pygame.BLEND_RGB_ADD)
+
+
+# Ruido de estática ya preparado: generar miles de puntos al azar en cada cuadro es lento
+# (sobre todo en el celular). Se arman 4 versiones una vez y en cada cuadro se usa una al azar.
+_ruidos = {}
+
+
+def ruido(sup, rect, cantidad, gris=(25, 160), colores=False):
+    clave = (rect.size, cantidad, gris, colores)
+    variantes = _ruidos.get(clave)
+    if variantes is None:
+        variantes = []
+        for _ in range(4):
+            capa = pygame.Surface(rect.size)
+            capa.fill((0, 0, 0))
+            capa.set_colorkey((0, 0, 0))
+            for _ in range(cantidad):
+                x, y = _random.randrange(rect.w), _random.randrange(rect.h)
+                if colores:
+                    c = (_random.randint(*gris), _random.randint(*gris), _random.randint(*gris))
+                else:
+                    g = _random.randint(*gris)
+                    c = (g, g, g)
+                capa.set_at((x, y), c)
+            variantes.append(capa)
+        _ruidos[clave] = variantes
+    sup.blit(_random.choice(variantes), rect.topleft)
