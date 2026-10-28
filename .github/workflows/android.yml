@@ -49,7 +49,11 @@ jobs:
           path: |
             ~/.buildozer
             build_android/.buildozer
+
           key: buildozer-${{ hashFiles('android/buildozer.spec', 'android/recipes/**') }}-v1
+
+          key: buildozer-${{ hashFiles('android/buildozer.spec') }}-v1
+
 
       - name: Compilar APK
         working-directory: build_android
