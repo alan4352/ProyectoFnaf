@@ -48,7 +48,7 @@ UI_EN = {
     "SUBTÍTULOS DE SONIDOS": "SOUND SUBTITLES",
     "¡TE VIERON! NADIE PUEDE SABERLO": "YOU WERE SEEN! NOBODY CAN KNOW", "LISTO. VUELVE A TU OFICINA": "DONE. GO BACK TO YOUR OFFICE",
     "DEL OTRO LADO": "THE OTHER SIDE", "Completa la cinta 0.": "Complete tape 0.",
-    "MODO INFINITO": "ENDLESS MODE", "Récord modo infinito": "Endless mode record", "RESISTISTE": "YOU LASTED", "RÉCORD": "RECORD", "¡NUEVO RÉCORD!": "NEW RECORD!",
+    "MODO INFINITO": "ENDLESS MODE", "[ESC] PARA CONTINUAR": "[ESC] TO CONTINUE", "Récord modo infinito": "Endless mode record", "RESISTISTE": "YOU LASTED", "RÉCORD": "RECORD", "¡NUEVO RÉCORD!": "NEW RECORD!",
     "MEJORES TIEMPOS": "BEST TIMES", "Sin 6 AM: cada hora son más rápidos. ¿Cuánto aguantas?":
         "No 6 AM: every hour they get faster. How long can you last?",
     "CAMPANADA: UNA HORA MÁS": "BELL: ONE MORE HOUR", "ALGO NUEVO SE ENCENDIÓ EN LA PLANTA": "SOMETHING NEW SWITCHED ON IN THE PLANT",
