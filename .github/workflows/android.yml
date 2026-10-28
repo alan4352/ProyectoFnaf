@@ -49,14 +49,53 @@ jobs:
           path: |
             ~/.buildozer
             build_android/.buildozer
-          key: buildozer-${{ hashFiles('android/buildozer.spec', 'android/recipes/**') }}-v1
+          key: buildozer-release-${{ hashFiles('android/buildozer.spec', 'android/recipes/**') }}-v1
 
+      # Firma del APK. Android solo deja actualizar la app si la firma es siempre la misma.
+      # Si en el repositorio hay secretos ANDROID_KEYSTORE_B64 y ANDROID_KEYSTORE_PASS se usan esos;
+      # si no, se crea una firma una vez y se guarda en la caché de Actions (dura mientras se use
+      # al menos una vez por semana).
+      - name: Firma guardada
+        uses: actions/cache@v4
+        with:
+          path: ~/firma-android
+          key: firma-android-v1
+
+      - name: Preparar la firma
+        env:
+          KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_B64 }}
+          KEYSTORE_PASS: ${{ secrets.ANDROID_KEYSTORE_PASS }}
+        run: |
+          mkdir -p ~/firma-android
+          if [ -n "$KEYSTORE_B64" ]; then
+            echo "$KEYSTORE_B64" | base64 -d > ~/firma-android/fnaf.keystore
+            echo "$KEYSTORE_PASS" > ~/firma-android/clave.txt
+          elif [ ! -f ~/firma-android/fnaf.keystore ]; then
+            head -c 18 /dev/urandom | base64 | tr -dc 'A-Za-z0-9' > ~/firma-android/clave.txt
+            keytool -genkeypair -v -keystore ~/firma-android/fnaf.keystore -alias fnaf -keyalg RSA \
+              -keysize 2048 -validity 10000 -storepass "$(cat ~/firma-android/clave.txt)" \
+              -keypass "$(cat ~/firma-android/clave.txt)" -dname "CN=alan4352, O=FNAF Industrial Sector, C=AR"
+          fi
+          echo "::add-mask::$(cat ~/firma-android/clave.txt)"
+          echo "P4A_RELEASE_KEYSTORE=$HOME/firma-android/fnaf.keystore" >> $GITHUB_ENV
+          echo "P4A_RELEASE_KEYALIAS=fnaf" >> $GITHUB_ENV
+          echo "P4A_RELEASE_KEYSTORE_PASSWD=$(cat ~/firma-android/clave.txt)" >> $GITHUB_ENV
+          echo "P4A_RELEASE_KEYALIAS_PASSWD=$(cat ~/firma-android/clave.txt)" >> $GITHUB_ENV
+
+      # "release" compila optimizado: en modo "debug" SDL queda sin optimizar (-O0) y el juego va muy lento
       - name: Compilar APK
         working-directory: build_android
         run: |
           set -o pipefail
-          buildozer android debug < /dev/null > buildozer.log 2>&1 || { grep -n -B5 -A40 "STDERR\|Error\|error:" buildozer.log | tail -n 300; tail -n 150 buildozer.log; exit 1; }
+          buildozer android release < /dev/null > buildozer.log 2>&1 || { grep -n -B5 -A40 "STDERR\|Error\|error:" buildozer.log | tail -n 300; tail -n 150 buildozer.log; exit 1; }
           tail -n 60 buildozer.log
+
+      - name: Revisar que se compiló optimizado
+        if: success()
+        working-directory: build_android
+        run: |
+          echo "SDL (ndk-build):"; grep -oE "objs(-debug)?/SDL2/" buildozer.log | sort | uniq -c || true
+          echo "pygame surface.c:"; grep -m1 "src_c/surface.c" buildozer.log | grep -oE " -O[0-3sz]\b" | sort | uniq -c || true
 
       - name: Guardar el registro si falló
         if: failure()
