@@ -1,0 +1,67 @@
+# Arma la versión web (pygbag) en cada push. En la rama main además la publica en GitHub Pages:
+#   https://alan4352.github.io/ProyectoFnaf/
+# El zip "FNAF_Industrial-web" de cada ejecución sirve para subirlo a itch.io como juego HTML5.
+name: Version web
+
+on:
+  push:
+    branches: ["**"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: web-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  compilar:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Instalar pygbag
+        run: pip install pygbag==0.9.3
+
+      - name: Armar la version web
+        run: python herramientas/preparar_web.py --compilar
+
+      - name: Revisar que esten los archivos
+        run: |
+          ls -la build_web/build/web
+          test -f build_web/build/web/index.html
+          test -f build_web/build/web/build_web.apk
+
+      - name: Subir zip para itch.io
+        uses: actions/upload-artifact@v4
+        with:
+          name: FNAF_Industrial-web
+          path: build_web/build/web
+
+      - name: Preparar GitHub Pages
+        if: github.ref == 'refs/heads/main'
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: build_web/build/web
+
+  publicar:
+    if: github.ref == 'refs/heads/main'
+    needs: compilar
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.publicar.outputs.page_url }}
+    steps:
+      # Si todavía no activaste Pages (Settings > Pages > Source: GitHub Actions) este paso
+      # avisa pero no marca error: el zip para itch.io igual queda en "compilar".
+      - name: Publicar en GitHub Pages
+        id: publicar
+        continue-on-error: true
+        uses: actions/deploy-pages@v4

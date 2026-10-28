@@ -15,6 +15,10 @@ Controles:
   V ................ visión nocturna (en cámaras)
   ESC / P .......... pausa        F11 .... pantalla completa
   Botones en pantalla: luces, persiana (mantener apretado)
+<<<<<< mejoras-2
+Las teclas se pueden cambiar en AJUSTES > CONTROLES. También se puede jugar con mando.
+=======
+>>>>>> main
 
 Juego de fans no oficial y sin fines de lucro, inspirado en Five Nights at Freddy's de Scott Cawthon.
 
@@ -33,5 +37,9 @@ Controls:
   V ................ night vision (on cameras)
   ESC / P .......... pause        F11 .... fullscreen
   On-screen buttons: lights, shutter (hold down)
+<<<<<< mejoras-2
+Keys can be changed in SETTINGS > CONTROLS. Gamepads are supported too.
+=======
+>>>>>> main
 
 Unofficial, non-profit fan game inspired by Five Nights at Freddy's by Scott Cawthon.

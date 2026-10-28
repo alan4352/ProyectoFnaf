@@ -66,6 +66,17 @@ Comprimila en **`FNAF_Industrial_v1.0.zip`** (clic derecho → *Enviar a* → *C
 8. En **Content disclosures / Age** indicá que tiene *jumpscares*, *terror* y *violencia leve*.
 9. Guardá como **Draft**, revisá la página con *View page* y, cuando esté bien, pasala a **Public**.
 
+## 4b. (Opcional) Versión para jugar en el navegador en itch.io
+
+1. En GitHub, pestaña **Actions** → **Version web** → la última ejecución → descargá el zip
+   **FNAF_Industrial-web** (o armalo vos con `python herramientas/preparar_web.py --compilar`: queda en
+   `build_web/build/web`).
+2. En itch.io, en **Uploads**, subí ese zip y marcá **This file will be played in the browser**.
+3. En **Embed options** poné un tamaño de **1200 × 700** y activá **Fullscreen button**.
+
+La misma versión se publica sola en `https://alan4352.github.io/ProyectoFnaf/` cada vez que se actualiza
+`main`, si en GitHub activaste *Settings → Pages → Source: GitHub Actions*.
+
 ## 5. (Opcional) GitHub Releases
 
 1. Subí el código a tu repositorio (`alan4352/ProyectoFnaf`).

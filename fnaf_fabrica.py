@@ -16,6 +16,8 @@ from minijuegos import crear_minijuego, Relato
 from progreso import Progreso, LOGROS, NOMBRES_LOGROS, formato_tiempo
 from unidad0 import Unidad0, POSICIONES as POS_UNIDAD0, SEGUNDOS_PARA_RECHAZAR
 import idioma
+import controles as mapa_teclas
+import mando
 from idioma import T, FuenteTraducible
 import historia as historia_es
 import historia_en
@@ -39,7 +41,7 @@ def tiempo_juego():
 # Si ponés MODO_DESARROLLO = True, el juego arranca con el modo ya activado.
 MODO_DESARROLLO = False
 CODIGO_DESARROLLO = "dunmore"
-VERSION = "1.0"
+VERSION = "1.1"
 pygame.init()
 pygame.mixer.init(frequency=44100, size=-16, channels=2, buffer=512)
 pygame.mixer.set_num_channels(24)
@@ -55,6 +57,7 @@ ALTO_OFICINA = 700
 
 # Ajustes del jugador (ajustes.json) y ventana con escalado propio (ver ventana.py)
 AJUSTES = cargar_ajustes()
+mapa_teclas.cargar(AJUSTES)
 import audio as modulo_audio
 modulo_audio.AJUSTES_AUDIO = AJUSTES
 import ventana
@@ -631,6 +634,7 @@ ESTADO_EXTRAS = "EXTRAS"
 ESTADO_LOGROS = "LOGROS"
 ESTADO_RESUMEN = "RESUMEN_ESTADISTICAS"
 ESTADO_CREDITOS = "CREDITOS"
+ESTADO_CONTROLES = "CONTROLES"
 resumen_volver_a = ESTADO_EXTRAS   # A dónde se va después de la pantalla de estadísticas
 creditos_volver_a = ESTADO_EXTRAS
 t_creditos = 0.0
@@ -848,6 +852,13 @@ infinito_registrado = False
 infinito_record_nuevo = False
 infinito_ultimo = 0.0
 
+<<<<<< mejoras-2
+def TK(plantilla):
+    """Traduce un texto de ayuda y le pone las teclas que eligió el jugador ({puerta}, {bajar_alt}...)."""
+    return T(plantilla).format(**mapa_teclas.etiquetas())
+
+=======
+>>>>>> main
 def es_infinito():
     return noche_actual == "INFINITO"
 
@@ -1694,7 +1705,7 @@ def dibujar_vista_techo():
             txt_aviso = fuente_pequeña.render("¡SILAS EN LA REJILLA DEL TECHO!", True, (255, 90, 90))
             pantalla.blit(txt_aviso, (ANCHO_VENTANA//2 - 130, ALTO_VENTANA//2 + 130))
 
-    txt_info = fuente_media.render("[ESPACIO] Sellar Compuerta - [ABAJO / S] Bajar a la Oficina", True, (200, 200, 200))
+    txt_info = fuente_media.render(TK("[{sellar}] Sellar Compuerta - [{bajar_alt}] Bajar a la Oficina"), True, (200, 200, 200))
     pantalla.blit(txt_info, (ANCHO_VENTANA//2 - 320, ALTO_VENTANA - 60))
 
 # -------------------------------------------------------------
@@ -1798,7 +1809,7 @@ def dibujar_sistema_camaras():
     if error_camaras:
         pygame.draw.rect(pantalla_camaras, (12, 8, 8), rect_pantalla_cctv)
         txt_err_cam = fuente_grande.render("[CCTV OFFLINE - SYSTEM ERROR]", True, (240, 50, 50))
-        txt_sub_err = fuente_pequeña.render("Fallo en tarjeta de video analógica. Reiniciar desde Panel [M].", True, (200, 120, 120))
+        txt_sub_err = fuente_pequeña.render(TK("Fallo en tarjeta de video analógica. Reiniciar desde Panel [{panel}]."), True, (200, 120, 120))
         pantalla_camaras.blit(txt_err_cam, (ANCHO_VENTANA//2 - txt_err_cam.get_width()//2 - 140, 270))
         pantalla_camaras.blit(txt_sub_err, (ANCHO_VENTANA//2 - txt_sub_err.get_width()//2 - 140, 320))
     elif modo_ventilacion:
@@ -2465,8 +2476,14 @@ def controles_fila_ajuste(i):
     barra = pygame.Rect(menos.right + 12, y + 8, mas.left - menos.right - 24, 10)
     return fila, menos, mas, barra
 
+<<<<<< mejoras-2
+RECT_AJ_RESTABLECER = pygame.Rect(ANCHO_VENTANA // 2 - 420, 606, 260, 46)
+RECT_AJ_CONTROLES = pygame.Rect(ANCHO_VENTANA // 2 - 130, 606, 260, 46)
+RECT_AJ_VOLVER = pygame.Rect(ANCHO_VENTANA // 2 + 160, 606, 260, 46)
+=======
 RECT_AJ_RESTABLECER = pygame.Rect(ANCHO_VENTANA // 2 - 300, 606, 280, 46)
 RECT_AJ_VOLVER = pygame.Rect(ANCHO_VENTANA // 2 + 20, 606, 280, 46)
+>>>>>> main
 
 def dibujar_menu_ajustes():
     if ajustes_volver_a == "PAUSA":
@@ -2522,7 +2539,74 @@ def dibujar_menu_ajustes():
         pantalla.blit(ayuda, (ANCHO_VENTANA // 2 - ayuda.get_width() // 2, 578))
 
     dibujar_boton_menu(RECT_AJ_RESTABLECER, "RESTABLECER", (180, 120, 40))
+    dibujar_boton_menu(RECT_AJ_CONTROLES, "CONTROLES / MANDO", (110, 130, 200))
     dibujar_boton_menu(RECT_AJ_VOLVER, "[ESC] VOLVER", (40, 160, 110))
+
+# -------------------------------------------------------------
+# Pantalla de controles: cambiar teclas y ver el mando
+# -------------------------------------------------------------
+controles_seleccion = 0
+controles_escuchando = None      # Acción que espera una tecla nueva
+controles_aviso, controles_aviso_hasta = "", 0.0
+RECT_CT_RESTABLECER = pygame.Rect(ANCHO_VENTANA // 2 - 300, 616, 280, 46)
+RECT_CT_VOLVER = pygame.Rect(ANCHO_VENTANA // 2 + 20, 616, 280, 46)
+
+def filas_controles():
+    return [pygame.Rect(70, 128 + i * 48, 650, 42) for i in range(len(mapa_teclas.ACCIONES))]
+
+def dibujar_controles():
+    pantalla.fill((8, 10, 12))
+    txt = fuente_titulo.render("CONTROLES", True, (220, 230, 235))
+    pantalla.blit(txt, (ANCHO_VENTANA // 2 - txt.get_width() // 2, 20))
+    sub = fuente_cam.render("CLIC (O ENTER) EN UNA ACCIÓN Y PULSA LA TECLA NUEVA  //  [ESC] VOLVER", True, (110, 140, 130))
+    pantalla.blit(sub, (ANCHO_VENTANA // 2 - sub.get_width() // 2, 80))
+    pos = pygame.mouse.get_pos()
+    nombres = mapa_teclas.etiquetas()
+    for i, (fila, (accion, nombre, _, alt)) in enumerate(zip(filas_controles(), mapa_teclas.ACCIONES)):
+        escuchando = controles_escuchando == accion
+        elegida = i == controles_seleccion or fila.collidepoint(pos)
+        pygame.draw.rect(pantalla, (40, 34, 14) if escuchando else ((24, 32, 30) if elegida else (14, 17, 19)), fila, border_radius=5)
+        pygame.draw.rect(pantalla, (240, 200, 70) if escuchando else ((60, 160, 110) if elegida else (40, 48, 52)), fila, 1, border_radius=5)
+        pantalla.blit(fuente_pequeña.render(nombre, True, (215, 225, 220)), (fila.x + 16, fila.centery - 9))
+        caja = pygame.Rect(fila.right - 285, fila.y + 6, 135, fila.h - 12)
+        if escuchando:
+            texto_tecla = "PULSA UNA TECLA..." if int(tiempo_juego() * 3) % 2 == 0 else ""
+            color_t = (255, 220, 90)
+        else:
+            texto_tecla, color_t = nombres[accion], (255, 255, 255)
+        pygame.draw.rect(pantalla, (30, 34, 40), caja, border_radius=4)
+        s_ = fuente_pequeña.render(texto_tecla, True, color_t)
+        pantalla.blit(s_, (caja.centerx - s_.get_width() // 2, caja.centery - s_.get_height() // 2))
+        if alt is not None:
+            s_ = fuente_cam.render(T("TAMBIÉN") + " " + mapa_teclas.nombre_tecla(alt), True, (110, 120, 120))
+            pantalla.blit(s_, (caja.right + 10, caja.centery - s_.get_height() // 2))
+
+    # Mando
+    x_m = 770
+    pantalla.blit(fuente_panel.render("MANDO", True, (90, 220, 140)), (x_m, 128))
+    nombre_m = mando.nombre_mando()
+    estado_m = (T("CONECTADO") + ": " + nombre_m[:26]) if nombre_m else T("NO SE DETECTÓ NINGÚN MANDO")
+    pantalla.blit(fuente_cam.render(estado_m, True, (200, 220, 210) if nombre_m else (150, 120, 110)), (x_m, 160))
+    for k, (boton, desc) in enumerate(mando.DESCRIPCION):
+        y = 192 + k * 30
+        caja = pygame.Rect(x_m, y, 92, 24)
+        pygame.draw.rect(pantalla, (30, 34, 40), caja, border_radius=4)
+        s_ = fuente_cam.render(boton, True, (255, 230, 150))
+        pantalla.blit(s_, (caja.centerx - s_.get_width() // 2, caja.centery - s_.get_height() // 2))
+        pantalla.blit(fuente_cam.render(desc, True, (180, 190, 185)), (caja.right + 12, caja.centery - 8))
+    for k, linea in enumerate(partir_texto(T("Los botones del mando usan las teclas de la izquierda."), fuente_cam, 390)):
+        pantalla.blit(fuente_cam.render(linea, True, (100, 110, 105)), (x_m, 500 + k * 18))
+
+    if tiempo_juego() < controles_aviso_hasta:
+        s_ = fuente_pequeña.render(controles_aviso, True, (255, 120, 100))
+        pantalla.blit(s_, (ANCHO_VENTANA // 2 - s_.get_width() // 2, 580))
+    dibujar_boton_menu(RECT_CT_RESTABLECER, "RESTABLECER TECLAS", (180, 120, 40))
+    dibujar_boton_menu(RECT_CT_VOLVER, "[ESC] VOLVER", (40, 160, 110))
+
+def abrir_controles():
+    global estado_actual, controles_escuchando, controles_seleccion
+    controles_escuchando, controles_seleccion = None, 0
+    estado_actual = ESTADO_CONTROLES
 
 def salir_de_ajustes():
     global estado_actual
@@ -2840,12 +2924,12 @@ def fin_del_juego_y_resumen():
 # -------------------------------------------------------------
 # índice de la línea de la llamada -> (objetivo, texto)
 TUTORIAL_NOCHE1 = {
-    1: ("monitor", "[ESPACIO] O CLIC: ABRIR LAS CÁMARAS"),
-    3: ("puerta", "[A] O CLIC: COMPUERTA"),
+    1: ("monitor", "[{monitor}] O CLIC: ABRIR LAS CÁMARAS"),
+    3: ("puerta", "[{puerta}] O CLIC: COMPUERTA"),
     4: ("persiana", "MANTÉN APRETADO: PERSIANA"),
-    5: ("pasillo", "MANTÉN [F] O CLIC DERECHO: LINTERNA"),
-    6: ("techo", "[W]: MIRAR AL TECHO  //  [S]: VOLVER"),
-    7: ("terminal", "[M] O CLIC: PANEL DE MANTENIMIENTO"),
+    5: ("pasillo", "MANTÉN [{linterna}] O CLIC DERECHO: LINTERNA"),
+    6: ("techo", "[{techo}]: MIRAR AL TECHO  //  [{bajar}]: VOLVER"),
+    7: ("terminal", "[{panel}] O CLIC: PANEL DE MANTENIMIENTO"),
 }
 
 def dibujar_tutorial():
@@ -2855,6 +2939,7 @@ def dibujar_tutorial():
     if not paso or monitor_abierto or mirando_techo or panel_mantenimiento_abierto:
         return
     objetivo, texto = paso
+    texto = TK(texto)
     oficina = {"puerta": RECT_BTN_PUERTA_IZQ, "persiana": RECT_BTN_PERSIANA,
                "pasillo": pygame.Rect(780, 170, 240, 250), "terminal": pygame.Rect(480, 360, 65, 85)}
     pulso = 2 + int(2 * (1 + math.sin(tiempo_juego() * 6)))
@@ -3202,6 +3287,51 @@ while True:
         pygame.display.flip()
         continue
 
+    elif estado_actual == ESTADO_CONTROLES:
+        dibujar_controles()
+        for evento in pygame.event.get():
+            if evento.type == pygame.QUIT:
+                guardar_ajustes(AJUSTES)
+                pygame.quit()
+                sys.exit()
+            if evento.type == pygame.KEYDOWN and controles_escuchando:
+                if evento.key != pygame.K_ESCAPE:
+                    if mapa_teclas.asignar(controles_escuchando, evento.key):
+                        reproducir_sonido(sfx_reboot_click)
+                        guardar_ajustes(AJUSTES)
+                    else:
+                        controles_aviso, controles_aviso_hasta = T("ESA TECLA NO SE PUEDE USAR"), tiempo_juego() + 2.0
+                        reproducir_sonido(sfx_alarma_error, 0.4, 0.4)
+                controles_escuchando = None
+                continue
+            if evento.type == pygame.KEYDOWN:
+                if evento.key in (pygame.K_ESCAPE, pygame.K_BACKSPACE):
+                    guardar_ajustes(AJUSTES)
+                    estado_actual = ESTADO_AJUSTES
+                elif evento.key == pygame.K_UP:
+                    controles_seleccion = (controles_seleccion - 1) % len(mapa_teclas.ACCIONES)
+                elif evento.key == pygame.K_DOWN:
+                    controles_seleccion = (controles_seleccion + 1) % len(mapa_teclas.ACCIONES)
+                elif evento.key == pygame.K_RETURN:
+                    controles_escuchando = mapa_teclas.ACCIONES[controles_seleccion][0]
+            if evento.type == pygame.MOUSEBUTTONDOWN and evento.button == 1:
+                if RECT_CT_VOLVER.collidepoint(evento.pos):
+                    guardar_ajustes(AJUSTES)
+                    reproducir_sonido(sfx_linterna)
+                    estado_actual = ESTADO_AJUSTES
+                elif RECT_CT_RESTABLECER.collidepoint(evento.pos):
+                    mapa_teclas.restablecer()
+                    guardar_ajustes(AJUSTES)
+                    reproducir_sonido(sfx_reboot_click)
+                for i, fila in enumerate(filas_controles()):
+                    if fila.collidepoint(evento.pos):
+                        controles_seleccion = i
+                        controles_escuchando = mapa_teclas.ACCIONES[i][0]
+                        reproducir_sonido(sfx_linterna)
+        aplicar_postprocesado_crt(dt, intensidad_aberracion=1)
+        pygame.display.flip()
+        continue
+
     elif estado_actual == ESTADO_AJUSTES:
         dibujar_menu_ajustes()
         for evento in pygame.event.get():
@@ -3225,11 +3355,15 @@ while True:
             if evento.type == pygame.MOUSEBUTTONDOWN and evento.button == 1:
                 if RECT_AJ_VOLVER.collidepoint(evento.pos):
                     salir_de_ajustes()
+                elif RECT_AJ_CONTROLES.collidepoint(evento.pos):
+                    reproducir_sonido(sfx_linterna)
+                    abrir_controles()
                 elif RECT_AJ_RESTABLECER.collidepoint(evento.pos):
                     for k, v in AJUSTES_POR_DEFECTO.items():
                         if AJUSTES[k] != v:
                             AJUSTES[k] = v
                     crt_activo = AJUSTES["crt"]
+                    mapa_teclas.cargar(AJUSTES)
                     ventana.aplicar_modo()
                     aplicar_idioma()
                     reproducir_sonido(sfx_reboot_click)
@@ -3273,7 +3407,7 @@ while True:
                 pygame.quit()
                 sys.exit()
             accion = None
-            if evento.type == pygame.KEYDOWN and evento.key in [pygame.K_ESCAPE, pygame.K_p]:
+            if evento.type == pygame.KEYDOWN and mapa_teclas.es("pausa", evento.key):
                 accion = "CONTINUAR"
             if evento.type == pygame.MOUSEBUTTONDOWN and evento.button == 1:
                 for nombre_b, rect_b in botones_pausa:
@@ -3384,7 +3518,7 @@ while True:
         if evento.type == pygame.KEYDOWN and evento.key == pygame.K_F11:
             alternar_pantalla_completa()
 
-        if evento.type == pygame.KEYDOWN and evento.key in [pygame.K_ESCAPE, pygame.K_p] and not juego_terminado and not en_jumpscare:
+        if evento.type == pygame.KEYDOWN and mapa_teclas.es("pausa", evento.key) and not juego_terminado and not en_jumpscare:
             pausado = True
             captura_pausa = pantalla.copy()
             pygame.mixer.pause()
@@ -3392,27 +3526,27 @@ while True:
 
         if not juego_terminado and not en_jumpscare and not en_apagon:
             if evento.type == pygame.KEYDOWN:
-                if evento.key == pygame.K_m and not monitor_abierto and not mirando_techo:
+                if mapa_teclas.es("panel", evento.key) and not monitor_abierto and not mirando_techo:
                     panel_mantenimiento_abierto = not panel_mantenimiento_abierto
                     reproducir_sonido(sfx_reboot_click)
 
                 if not panel_mantenimiento_abierto:
-                    if evento.key in [pygame.K_SPACE, pygame.K_c] and not mirando_techo:
+                    if mapa_teclas.es("monitor", evento.key) and not mirando_techo:
                         monitor_abierto = not monitor_abierto
                         reproducir_sonido(sfx_monitor_movimiento)
                         reproducir_sonido(sfx_estatica_cctv)
-                    if monitor_abierto and evento.key == pygame.K_v and not ir_agotado and not modificadores.get("sin_ir"):
+                    if monitor_abierto and mapa_teclas.es("vision", evento.key) and not ir_agotado and not modificadores.get("sin_ir"):
                         vision_nocturna_cam = not vision_nocturna_cam
                         reproducir_sonido(sfx_linterna)
                     if not monitor_abierto:
-                        if evento.key in [pygame.K_UP, pygame.K_w]:
+                        if mapa_teclas.es("techo", evento.key):
                             mirando_techo = True
-                        elif evento.key in [pygame.K_DOWN, pygame.K_s]:
+                        elif mapa_teclas.es("bajar", evento.key):
                             mirando_techo = False
-                        if mirando_techo and evento.key == pygame.K_SPACE:
+                        elif mirando_techo and mapa_teclas.es("sellar", evento.key):
                             ventilacion_sellada = not ventilacion_sellada
                             reproducir_sonido(sfx_puerta)
-                        if not mirando_techo and evento.key == pygame.K_a:
+                        if not mirando_techo and mapa_teclas.es("puerta", evento.key):
                             alternar_puerta()
 
             if evento.type == pygame.MOUSEBUTTONDOWN:
@@ -3602,7 +3736,7 @@ while True:
                 subtitulo(texto_p, lado_p, cada + 0.3)
 
     teclas = pygame.key.get_pressed()
-    intento_linterna = not monitor_abierto and not mirando_techo and not panel_mantenimiento_abierto and not en_apagon and progreso_monitor <= 0.2 and (mouse_click[2] or teclas[pygame.K_f])
+    intento_linterna = not monitor_abierto and not mirando_techo and not panel_mantenimiento_abierto and not en_apagon and progreso_monitor <= 0.2 and (mouse_click[2] or mapa_teclas.mantenida("linterna", teclas))
 
     if intento_linterna and not linterna_sobrecalentada:
         if not linterna_pasillo:
@@ -3844,7 +3978,7 @@ while True:
     if not mirando_techo and not panel_mantenimiento_abierto and not en_apagon:
         color_tab = (40, 160, 220) if monitor_abierto else (60, 70, 80)
         pygame.draw.rect(pantalla, color_tab, rect_toggle_camara, border_radius=6)
-        txt_tab = fuente_pequeña.render("[ESPACIO / CLIC] MONITOR CCTV", True, (255, 255, 255))
+        txt_tab = fuente_pequeña.render(TK("[{monitor} / CLIC] MONITOR CCTV"), True, (255, 255, 255))
         pantalla.blit(txt_tab, (ANCHO_VENTANA//2 - 105, ALTO_VENTANA - 35))
 
     if not en_apagon:
@@ -3858,7 +3992,7 @@ while True:
         pantalla.blit(txt_hora, (ANCHO_VENTANA - 130, 25))
 
         if (error_ventilacion or error_camaras or apagon_bobina_activo) and int(tiempo_juego() * 3) % 2 == 0:
-            msg_hud = "[!] GENERADOR CAM_08 VACÍO" if apagon_bobina_activo else "[!] ERROR DE SISTEMA - PULSA [M]"
+            msg_hud = "[!] GENERADOR CAM_08 VACÍO" if apagon_bobina_activo else TK("[!] ERROR DE SISTEMA - PULSA [{panel}]")
             txt_err_hud = fuente_pequeña.render(msg_hud, True, (255, 60, 60))
             pantalla.blit(txt_err_hud, (ANCHO_VENTANA - 270, 95))
 
