@@ -20,6 +20,7 @@ android.minapi = 24
 android.accept_sdk_license = True
 p4a.bootstrap = sdl2
 android.allow_backup = True
+android.release_artifact = apk
 
 [buildozer]
 log_level = 2

@@ -178,14 +178,31 @@ def hay_que_dibujar():
     return bool(_visibles() - {"clic_largo"})
 
 
+_cache_dibujo = {}
+
+
 def dibujar(sup):
-    global _fuente
-    visibles = _visibles()
+    """Dibuja los botones visibles. Cada combinación se arma una sola vez (en el celular es caro)."""
+    visibles = _visibles() - {"clic_largo"}
     if not visibles:
         return
+    clave = (frozenset(visibles), _boton_apretado)
+    capa = _cache_dibujo.get(clave)
+    if capa is None:
+        if len(_cache_dibujo) > 40:
+            _cache_dibujo.clear()
+        capa = _armar_capa(sup.get_size(), visibles)
+        _cache_dibujo[clave] = capa
+    for rect, imagen in capa:
+        sup.blit(imagen, rect.topleft)
+
+
+def _armar_capa(tamaño, visibles):
+    """Devuelve [(rect, imagen)] con solo la zona de cada botón (no una capa de pantalla completa)."""
+    global _fuente
     if _fuente is None:
         _fuente = pygame.font.Font(None, 26)
-    capa = pygame.Surface(sup.get_size(), pygame.SRCALPHA)
+    capa = pygame.Surface(tamaño, pygame.SRCALPHA)
     for nombre in visibles:
         if nombre not in BOTONES:
             continue
@@ -217,7 +234,10 @@ def dibujar(sup):
                       "izquierda": [(cx - 14, cy), (cx + 10, cy - 14), (cx + 10, cy + 14)],
                       "derecha": [(cx + 14, cy), (cx - 10, cy - 14), (cx - 10, cy + 14)]}[nombre]
             pygame.draw.polygon(capa, (255, 240, 200, 220), puntas)
-    sup.blit(capa, (0, 0))
+    zonas = [BOTONES[n][0] for n in visibles if n in BOTONES]
+    if "cruz" in visibles:
+        zonas += [rect for rect, _ in CRUZ.values()]
+    return [(z, capa.subsurface(z).copy()) for z in zonas]
 
 
 def _traducir(texto):

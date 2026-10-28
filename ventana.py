@@ -171,7 +171,9 @@ def presentar():
     mostrar_fps = AJUSTES.get("mostrar_fps") and reloj is not None
     botones_tactiles = tactil.hay_que_dibujar()
     if abs(brillo - 1.0) > 0.01 or mostrar_fps or capa_extra or mando.cursor_activo or botones_tactiles:
-        imagen = virtual.copy()
+        # Con brillo normal se dibuja directo encima (el juego redibuja todo en cada cuadro);
+        # copiar la pantalla entera en cada cuadro es caro en el celular
+        imagen = virtual.copy() if abs(brillo - 1.0) > 0.01 else virtual
         if botones_tactiles:
             tactil.dibujar(imagen)
         if capa_extra:
