@@ -10,6 +10,7 @@ import sys
 from recursos import carpeta_juego
 
 EN_NAVEGADOR = sys.platform == "emscripten"
+EN_ANDROID = "ANDROID_ARGUMENT" in os.environ or hasattr(sys, "getandroidapilevel")
 
 
 def _leer_texto(ruta, clave_web):
@@ -70,7 +71,7 @@ AJUSTES_POR_DEFECTO = {
     "vol_musica": 80,
     "vol_voces": 100,
     "brillo": 100,
-    "crt": not EN_NAVEGADOR,    # En el navegador el efecto CRT baja mucho los FPS: arranca apagado
+    "crt": not (EN_NAVEGADOR or EN_ANDROID),   # En el navegador y el celular baja mucho los FPS: arranca apagado
     "pantalla_completa": False,
     "escalado": "ajustar",      # "ajustar" (sin deformar, con bordes) o "estirar" (llena la pantalla)
     "vel_giro": 100,
@@ -78,6 +79,7 @@ AJUSTES_POR_DEFECTO = {
     "dificultad": "normal",     # "historia", "normal" o "pesadilla"
     "idioma": "es",             # "es" (español) o "en" (inglés)
     "subtitulos": False,        # Mostrar en pantalla los sonidos importantes
+    "tactil": "auto",           # Botones táctiles: "auto" (celular), "si" o "no"
     "teclas": {},               # Teclas cambiadas en AJUSTES > CONTROLES ({"puerta": "q", ...})
 }
 

@@ -12,3 +12,4 @@ save.json
 ajustes.json
 build_web/
 build_android/
+!android/buildozer.spec

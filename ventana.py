@@ -14,6 +14,7 @@ import sys
 import pygame
 
 import mando
+import tactil
 
 EN_NAVEGADOR = sys.platform == "emscripten"
 
@@ -62,7 +63,10 @@ def aplicar_modo():
     ancho = virtual.get_width() if virtual else 1200
     alto = virtual.get_height() if virtual else 700
     try:
-        if EN_NAVEGADOR:
+        if tactil.ES_ANDROID:
+            # En Android: pantalla completa y la placa de video escala la imagen (más rápido)
+            _ventana = pygame.display.set_mode((ancho, alto), pygame.FULLSCREEN | pygame.SCALED)
+        elif EN_NAVEGADOR:
             # En la versión web la página se encarga del tamaño del lienzo
             _ventana = pygame.display.set_mode((ancho, alto))
         elif AJUSTES.get("pantalla_completa"):
@@ -103,6 +107,9 @@ def posicion_mouse():
 
 def botones_mouse(*args, **kwargs):
     base = _pressed_real(*args, **kwargs)
+    if tactil.dedo_en_boton:
+        # El dedo está sobre un botón táctil: para el juego no hay clic izquierdo
+        base = (False,) + tuple(base[1:])
     if not mando.clics_mantenidos:
         return base
     return tuple(bool(v) or (i + 1) in mando.clics_mantenidos for i, v in enumerate(base))
@@ -110,7 +117,7 @@ def botones_mouse(*args, **kwargs):
 
 def teclas_apretadas():
     base = _teclas_real()
-    extra = mando.flechas | _flechas_stick
+    extra = mando.flechas | _flechas_stick | tactil.teclas_mantenidas
     return mando.TeclasConMando(base, extra) if extra else base
 
 
@@ -128,13 +135,15 @@ def obtener_eventos(*args, **kwargs):
         elif ev.type in (pygame.VIDEORESIZE, pygame.WINDOWSIZECHANGED):
             _calcular_destino()
         eventos.append(ev)
+    ahora = pygame.time.get_ticks()
+    dt = min(0.1, (ahora - _ultimo_tick) / 1000.0)
+    _ultimo_tick = ahora
     if mando.mandos:
         eventos = mando.traducir(eventos)
-        ahora = pygame.time.get_ticks()
-        _flechas_stick = mando.actualizar(min(0.1, (ahora - _ultimo_tick) / 1000.0))
-        _ultimo_tick = ahora
+        _flechas_stick = mando.actualizar(dt)
     elif any(ev.type == pygame.JOYDEVICEADDED for ev in eventos):
         eventos = mando.traducir(eventos)
+    eventos = tactil.traducir(eventos, dt)
     if al_recibir_eventos:
         al_recibir_eventos(eventos)
     return eventos
@@ -160,8 +169,11 @@ def presentar():
     imagen = virtual
     brillo = AJUSTES.get("brillo", 100) / 100.0
     mostrar_fps = AJUSTES.get("mostrar_fps") and reloj is not None
-    if abs(brillo - 1.0) > 0.01 or mostrar_fps or capa_extra or mando.cursor_activo:
+    botones_tactiles = tactil.hay_que_dibujar()
+    if abs(brillo - 1.0) > 0.01 or mostrar_fps or capa_extra or mando.cursor_activo or botones_tactiles:
         imagen = virtual.copy()
+        if botones_tactiles:
+            tactil.dibujar(imagen)
         if capa_extra:
             capa_extra(imagen)
         mando.dibujar_cursor(imagen)
