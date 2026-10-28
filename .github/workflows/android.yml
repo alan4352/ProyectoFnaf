@@ -2,10 +2,12 @@
 # El APK queda en el zip "FNAF_Industrial-android" de cada ejecución y, con un tag v*, en el Release.
 name: Version Android
 
+# Como tarda, se arma solo en main, en los PR, con tags v* o a mano (Actions > Version Android > Run workflow).
 on:
   push:
-    branches: ["**"]
+    branches: [main]
     tags: ["v*"]
+  pull_request:
   workflow_dispatch:
 
 permissions:

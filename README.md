@@ -104,6 +104,21 @@ A las 2, 3 y 4 AM se vuelven más agresivos.
 **Unidad 0** (noche 6): recorre cuatro cámaras y avanza cuando pasa mucho tiempo sin que la mires.
 Cuando llega al pasillo (CAM_07), mírala fijo unos segundos para que retroceda.
 
+## Celular (Android)
+
+El APK se arma solo en GitHub (workflow **Version Android**, tarda unos 25 minutos): en *Actions* →
+*Version Android* → la última ejecución → *Artifacts* → **FNAF_Industrial-android**. Adentro está el `.apk`;
+pasalo al celular y abrilo (Android pide permiso para instalar apps de "orígenes desconocidos").
+
+En el celular aparecen **botones táctiles**: LINTERNA (mantener), TECHO / BAJAR, SELLAR, VISIÓN IR y PAUSA.
+Se gira la vista arrastrando el dedo, mantener el dedo sobre un ducto cierra la compuerta (como el clic derecho)
+y en las cintas aparece una cruz para moverse. El botón "atrás" funciona como ESC. Los botones también se pueden
+activar en la PC desde *AJUSTES > BOTONES TÁCTILES* (útil con pantallas táctiles).
+
+Para armarlo a mano (Linux o WSL): `pip install buildozer cython`, `python herramientas/preparar_android.py`
+y `cd build_android && buildozer android debug`. La configuración está en `android/buildozer.spec`, con una
+receta propia de pygame en `android/recipes/`.
+
 ## Versión web (navegador)
 
 La versión web se arma con [pygbag](https://pypi.org/project/pygbag/):
@@ -141,6 +156,8 @@ itch.io como juego HTML5). Desde `main` además se publica en GitHub Pages, si e
 | `unidad0.py` | El enemigo de la noche 6 |
 | `controles.py` | Teclas configurables de la oficina |
 | `mando.py` | Soporte para mando (joystick) |
+| `tactil.py` | Botones táctiles para celular |
+| `herramientas/preparar_android.py`, `android/` | Arma el APK de Android (buildozer) |
 | `herramientas/preparar_web.py` | Arma la versión web (pygbag) |
 | `datos.py` | También: niveles de dificultad y desafíos de la Custom Night |
 
