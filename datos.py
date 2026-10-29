@@ -67,7 +67,8 @@ RUTA_SILAS_NORTE = ["CAM_02_MESAS", "VENT_01", "VENT_02", "VENT_04", "REJILLA_OF
 RUTA_SILAS_OESTE = ["CAM_02_MESAS", "VENT_01", "VENT_03", "REJILLA_OFICINA", "OFICINA"]
 
 JUMPSCARE_ARCHIVOS = {"Barnaby": "jumpscare_barnaby.png", "Silas": "jumpscare_silas.png",
-                      "Penny": "jumpscare_penny.png", "Rusty Bunny": "jumpscare_bunny.png"}
+                      "Penny": "jumpscare_penny.png", "Rusty Bunny": "jumpscare_bunny.png",
+                      "Unidad 0": "jumpscare_unidad0.png"}
 
 # Variantes de posición en cámara: (desplazamiento x, desplazamiento y, factor de escala).
 # Cada vez que un animatrónico se mueve elige una al azar, así no aparece siempre en el mismo lugar.

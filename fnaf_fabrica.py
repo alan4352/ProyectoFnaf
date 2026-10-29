@@ -331,7 +331,7 @@ def _silueta(img):
     return s_
 
 ASSETS["unidad0"] = _silueta(ASSETS.get("barnaby_cam"))
-if ASSETS.get("jumpscare_Barnaby"):
+if not ASSETS.get("jumpscare_Unidad 0") and ASSETS.get("jumpscare_Barnaby"):
     _js = ASSETS["jumpscare_Barnaby"].copy()
     _js.fill((55, 40, 45), special_flags=pygame.BLEND_RGB_MULT)
     _js.fill((40, 0, 0), special_flags=pygame.BLEND_RGB_ADD)
