@@ -1669,6 +1669,10 @@ def dibujar_oficina_con_imagen(luz_izq_efectiva, luz_der_efectiva):
         superficie_oficina.blit(hueco, rp.topleft)
         pygame.draw.rect(superficie_oficina, (40, 38, 34), rp, 10)
         pygame.draw.rect(superficie_oficina, (12, 12, 12), rp, 3)
+    elif not puerta_izq_cerrada and luz_izq_efectiva:
+        brillo_izq = pygame.Surface(rp.size)
+        brillo_izq.fill((38, 34, 18))
+        superficie_oficina.blit(brillo_izq, rp.topleft, special_flags=pygame.BLEND_RGB_ADD)
     if not puerta_izq_cerrada and penny.nodo_actual == 3:
         sp_penny = sprite("penny_puerta") or sprite("penny_cam")
         superficie_oficina.set_clip(rp)
