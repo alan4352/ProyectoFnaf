@@ -279,7 +279,10 @@ for i in range(1, 5):
 ASSETS["vent_bloqueada"] = escalar_cubriendo(cargar_imagen_opcional("vent_bloqueada.png", opaca=True), 720, 480)
 
 # Jumpscares a pantalla completa (un poco más grandes para poder hacer zoom y temblor)
+# Si hay secuencia de cuadros (jumpscare_penny_00, _01...) se usa solo esa: la imagen fija no se carga.
 for _nombre, _archivo in JUMPSCARE_ARCHIVOS.items():
+    if any(INDICE_ASSETS.get(_archivo[:-4] + "_00" + ext) for ext in (".png", ".jpg", ".jpeg")):
+        continue
     ASSETS[f"jumpscare_{_nombre}"] = escalar_cubriendo(cargar_imagen_opcional(_archivo, opaca=True), int(ANCHO_VENTANA * 1.15), int(ALTO_VENTANA * 1.15))
 
 # Sprites con transparencia
@@ -310,7 +313,7 @@ for _nombre, _archivo in JUMPSCARE_ARCHIVOS.items():
     _cuadros = cargar_cuadros(_archivo[:-4], lambda im: escalar_cubriendo(im, int(ANCHO_VENTANA * 1.15), int(ALTO_VENTANA * 1.15)))
     if _cuadros:
         ANIMS[f"jumpscare_{_nombre}"] = _cuadros
-        ASSETS[f"jumpscare_{_nombre}"] = ASSETS.get(f"jumpscare_{_nombre}") or _cuadros[0]
+        ASSETS[f"jumpscare_{_nombre}"] = _cuadros[-1]   # La pantalla de muerte usa el último cuadro
 if ANIMS:
     print("[ASSETS] Animaciones: " + ", ".join(f"{k} ({len(v)} cuadros)" for k, v in ANIMS.items()))
 
@@ -1878,9 +1881,9 @@ _capas_nv = []
 def capas_vision_nocturna():
     """El brillo verde y las líneas de la visión nocturna: se arman una sola vez."""
     if not _capas_nv:
-        capa = pygame.Surface((720, 480), pygame.SRCALPHA)
-        capa.fill((45, 210, 95, 45))
-        pygame.draw.circle(capa, (170, 255, 190, 50), (360, 240), 210)
+        capa = pygame.Surface((720, 480))     # Sin alfa: sumar colores así es mucho más rápido
+        capa.fill((45, 210, 95))
+        pygame.draw.circle(capa, (170, 255, 190), (360, 240), 210)
         lineas = pygame.Surface((720, 480))
         lineas.fill((0, 0, 0))
         lineas.set_colorkey((0, 0, 0))
@@ -1888,6 +1891,24 @@ def capas_vision_nocturna():
             pygame.draw.line(lineas, (20, 90, 40), (0, y_nv), (720, y_nv), 1)
         _capas_nv.extend([capa, lineas])
     return _capas_nv
+
+_capas_asfixia = {}
+
+def capa_asfixia(factor_peligro, rojo):
+    """Túnel oscuro de la falta de oxígeno. Se arma una vez por nivel (24 niveles) y se reusa."""
+    clave = (factor_peligro, rojo)
+    capa = _capas_asfixia.get(clave)
+    if capa is None:
+        capa = pygame.Surface((ANCHO_VENTANA, ALTO_VENTANA), pygame.SRCALPHA)
+        grosor_tunel = int(180 * factor_peligro)
+        alpha_tunel = min(240, int(120 + 130 * factor_peligro))
+        if grosor_tunel > 0:
+            pygame.draw.rect(capa, (0, 0, 0, alpha_tunel), (0, 0, ANCHO_VENTANA, ALTO_VENTANA), grosor_tunel)
+        pygame.draw.circle(capa, (0, 0, 0, 0), (ANCHO_VENTANA // 2, ALTO_VENTANA // 2), max(120, int(420 * (1.0 - factor_peligro))))
+        if rojo:
+            capa.fill((70, 0, 0, 50), special_flags=pygame.BLEND_RGBA_ADD)
+        _capas_asfixia[clave] = capa
+    return capa
 
 def dibujar_sistema_camaras():
     pantalla_camaras.fill((8, 12, 10))
@@ -2003,7 +2024,7 @@ def dibujar_sistema_camaras():
     if not error_camaras:
         if vision_nocturna_cam:
             capa_nv, lineas_nv = capas_vision_nocturna()
-            pantalla_camaras.blit(capa_nv, (100, 80), special_flags=pygame.BLEND_RGBA_ADD)
+            pantalla_camaras.blit(capa_nv, (100, 80), special_flags=pygame.BLEND_RGB_ADD)
             pantalla_camaras.blit(lineas_nv, (100, 80))
 
             anomalia_detectada = any(camara_seleccionada in str(a.ruta[a.nodo_actual]) for a in [barnaby, silas, penny, bunny])
@@ -2119,11 +2140,18 @@ def dibujar_jumpscare(progreso):
     cx = ANCHO_VENTANA // 2
     cy = ALTO_VENTANA // 2
 
-    img_js = sprite(f"jumpscare_{animatronico_atacante}", fps=14)
+    cuadros_js = ANIMS.get(f"jumpscare_{animatronico_atacante}")
+    if cuadros_js:
+        # La secuencia se ve una sola vez, en orden, y queda en el último cuadro
+        indice = min(len(cuadros_js) - 1, int(progreso * DURACION_JUMPSCARE * 6))
+        img_js = cuadros_js[indice]
+    else:
+        img_js = ASSETS.get(f"jumpscare_{animatronico_atacante}")
     if img_js:
                 # Embestida: arranca un poco lejos y se abalanza contra la cámara en el primer 15%
         t = min(1.0, progreso / 0.15)
-        factor = 0.72 + 0.28 * (1 - (1 - t) ** 3)
+        # Con secuencia de cuadros el movimiento ya está en las imágenes: sin zoom inicial
+        factor = 1.0 if cuadros_js else 0.72 + 0.28 * (1 - (1 - t) ** 3)
         w, h = int(img_js.get_width() * factor), int(img_js.get_height() * factor)
         oscuro = random.random() < 0.12   # Parpadeo de señal: algunos cuadros salen oscurecidos
         if factor >= 0.999 and not oscuro:
@@ -3054,6 +3082,23 @@ def dibujar_tutorial():
 # 17. Bucle Principal de Juego
 # -------------------------------------------------------------
 ventana.capa_extra = dibujar_capas_superiores   # Avisos de logros y panel de desarrollador
+def precalentar():
+    """Arma de antemano lo que se usa la primera vez que se abren las cámaras, la visión nocturna,
+    el apagón o la falta de oxígeno (si no, esa primera vez el juego se traba un momento)."""
+    rect_cctv = pygame.Rect(100, 80, 720, 480)
+    lienzo = pygame.Surface((ANCHO_VENTANA, ALTO_VENTANA))
+    for cantidad in (450, 1800):
+        ruido(lienzo, rect_cctv, cantidad)
+    ruido(lienzo, lienzo.get_rect(), 450, (220, 220))
+    ruido(lienzo, lienzo.get_rect(), 400, (25, 100), colores=True)
+    ruido(lienzo, lienzo.get_rect(), 1400, (30, 140))
+    ruido(lienzo, lienzo.get_rect(), 2500, (30, 150))
+    capas_vision_nocturna()
+    capa_apagon_oficina()
+    for nivel in range(0, 25):
+        capa_asfixia(nivel / 24, False)
+
+precalentar()
 JUEGO_LISTO = True   # (lo usan las pruebas automáticas)
 while True:
     dt = min(reloj.tick(60) / 1000.0, 0.1)
@@ -4050,18 +4095,9 @@ while True:
         dibujar_tutorial()
 
     if oxigeno < 45.0 and not juego_terminado and not en_apagon:
-        overlay_asfixia = pygame.Surface((ANCHO_VENTANA, ALTO_VENTANA), pygame.SRCALPHA)
         factor_peligro = (45.0 - oxigeno) / 45.0
-        grosor_tunel = int(180 * factor_peligro)
-        alpha_tunel = min(240, int(120 + 130 * factor_peligro))
-
-        pygame.draw.rect(overlay_asfixia, (0, 0, 0, alpha_tunel), (0, 0, ANCHO_VENTANA, ALTO_VENTANA), grosor_tunel)
-        pygame.draw.circle(overlay_asfixia, (0, 0, 0, 0), (ANCHO_VENTANA // 2, ALTO_VENTANA // 2), max(120, int(420 * (1.0 - factor_peligro))))
-
-        if error_ventilacion and int(tiempo_juego() * 3) % 2 == 0:
-            overlay_asfixia.fill((70, 0, 0, 50), special_flags=pygame.BLEND_RGBA_ADD)
-
-        pantalla.blit(overlay_asfixia, (0, 0))
+        rojo = error_ventilacion and int(tiempo_juego() * 3) % 2 == 0
+        pantalla.blit(capa_asfixia(round(factor_peligro * 24) / 24, rojo), (0, 0))
 
     if not mirando_techo and not panel_mantenimiento_abierto and not en_apagon:
         color_tab = (40, 160, 220) if monitor_abierto else (60, 70, 80)

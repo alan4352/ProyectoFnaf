@@ -31,4 +31,15 @@ class PygameNuevo(Pygame2Recipe):
         super().prebuild_arch(arch)
 
 
+    def get_recipe_env(self, arch, **kwargs):
+        env = super().get_recipe_env(arch, **kwargs)
+        # Sin esto pygame se compila sin optimizar (-O0): dibujar con transparencias (visión
+        # nocturna, asfixia, sprites) iba muchísimo más lento en el celular. Va al final para ganar.
+        env["CFLAGS"] = env.get("CFLAGS", "") + " -O2 -DNDEBUG"
+        if arch.arch == "armeabi-v7a":
+            # Todos los Android de 32 bits actuales tienen NEON: así pygame usa sus rutinas rápidas
+            env["CFLAGS"] += " -mfpu=neon"
+        return env
+
+
 recipe = PygameNuevo()
