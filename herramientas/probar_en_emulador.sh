@@ -18,8 +18,9 @@ echo "pantalla ${W}x${H}" > prueba/pantalla.txt
 toque 560 240          # NUEVO JUEGO
 sleep 3
 adb exec-out screencap -p > prueba/captura_2_intro.png
+adb shell log -t PRUEBA "MARCA menu-noche"
 adb shell input keyevent 4   # Atrás = ESC: saltea la introducción
-sleep 8
+sleep 16
 adb exec-out screencap -p > prueba/captura_3_noche.png
 toque 1112 474         # Botón táctil LINTERNA... (solo una prueba de toque)
 sleep 1
@@ -28,10 +29,12 @@ sleep 2
 adb exec-out screencap -p > prueba/captura_4_techo.png
 toque 1112 360         # BAJAR
 sleep 1
+adb shell log -t PRUEBA "MARCA camaras"
 toque 600 672          # Pestaña del monitor de cámaras
-sleep 3
+sleep 16
 adb exec-out screencap -p > prueba/captura_5_camaras.png
 adb shell pidof $PAQUETE > prueba/proceso.txt 2>&1 || echo "NO ESTA CORRIENDO" >> prueba/proceso.txt
 adb logcat -d > prueba/logcat.txt
+grep -E "\[FPS\]|PRUEBA" prueba/logcat.txt > prueba/fps.txt || true
 adb shell run-as $PAQUETE cat files/app/registro_error.txt > prueba/registro_error.txt 2>&1 || true
 exit 0

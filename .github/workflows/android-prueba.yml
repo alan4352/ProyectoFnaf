@@ -72,7 +72,7 @@ jobs:
       - name: Mostrar el registro
         if: always()
         run: |
-          cat prueba/proceso.txt prueba/pantalla.txt || true
+          cat prueba/proceso.txt prueba/pantalla.txt prueba/fps.txt || true
           grep " python  " prueba/logcat.txt | tail -n 80 || true
 
       - name: Subir registro y capturas

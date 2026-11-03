@@ -160,9 +160,23 @@ def _aplicar_brillo(sup, brillo):
         sup.fill((v, v, v), special_flags=pygame.BLEND_RGB_MULT)
 
 
+_ultimo_registro_fps = [0]
+
+
+def _registrar_fps():
+    """En Android escribe los FPS en el registro del sistema (logcat) cada 5 segundos, para medir."""
+    if not tactil.ES_ANDROID or reloj is None:
+        return
+    ahora = pygame.time.get_ticks()
+    if ahora - _ultimo_registro_fps[0] >= 5000:
+        _ultimo_registro_fps[0] = ahora
+        print(f"[FPS] {reloj.get_fps():.1f}")
+
+
 def presentar():
     """Muestra la pantalla virtual en la ventana real (con brillo, escalado y FPS)."""
     global _fuente_fps
+    _registrar_fps()
     ventana_real = pygame.display.get_surface()
     _calcular_destino()   # Barato: así responde enseguida si se agranda la ventana o cambia el modo
 

@@ -97,8 +97,8 @@ jobs:
           echo "SDL (ndk-build):"; grep -oE "objs(-debug)?/SDL2/" buildozer.log | sort | uniq -c || true
           echo "pygame surface.c:"; grep -m1 "src_c/surface.c" buildozer.log | grep -oE " -O[0-3sz]\b" | sort | uniq -c || true
 
-      - name: Guardar el registro si falló
-        if: failure()
+      - name: Guardar el registro de compilación
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: registro-buildozer

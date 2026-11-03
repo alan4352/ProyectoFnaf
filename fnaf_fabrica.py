@@ -994,6 +994,7 @@ def dibujar_subtitulos():
         fondo.fill((0, 0, 0, 175))
         pantalla.blit(fondo, caja.topleft)
         if fin - ahora_s < 0.4:
+            sup = sup.copy()   # El texto viene de la caché de la fuente: no se modifica el original
             sup.set_alpha(int(255 * (fin - ahora_s) / 0.4))
         pantalla.blit(sup, (caja.x + 12, caja.y + 5))
 
@@ -1260,8 +1261,10 @@ def dibujar_oficina():
     luz_izq_efectiva = luz_izq and not apagon_bobina_activo
     luz_der_efectiva = luz_der and not apagon_bobina_activo
 
-    # 1. Base del entorno
-    if ASSETS.get("oficina_base"):
+    # 1. Base del entorno (con la puerta abierta, si hay imagen propia, esa la tapa entera)
+    if ASSETS.get("oficina_puerta_abierta") and not puerta_izq_cerrada:
+        pass
+    elif ASSETS.get("oficina_base"):
         superficie_oficina.blit(ASSETS["oficina_base"], (0, 0))
     else:
         superficie_oficina.fill((18, 20, 22))
@@ -1364,9 +1367,7 @@ def dibujar_oficina():
 
     # --- 3. ELEMENTOS DE MANTENIMIENTO Y PUERTA IZQUIERDA ---
     if en_apagon:
-        capa_oscura = pygame.Surface((ANCHO_OFICINA, ALTO_OFICINA), pygame.SRCALPHA)
-        capa_oscura.fill((0, 0, 0, 225))
-        superficie_oficina.blit(capa_oscura, (0, 0))
+        superficie_oficina.blit(capa_apagon_oficina(), (0, 0))
 
         t_ap = tiempo_juego() - tiempo_inicio_apagon
         if 2.5 < t_ap < 12.0:
@@ -1642,6 +1643,16 @@ def dibujar_ventana_con_imagen(luz_der_efectiva):
             superficie_oficina.blit(*CAPA_CADENA)
 
 _huecos_puerta = {}
+_capa_apagon = []
+
+def capa_apagon_oficina():
+    """Oscuridad del apagón (se arma una vez: crear una capa de 1800x700 por cuadro es caro)."""
+    if not _capa_apagon:
+        capa = pygame.Surface((ANCHO_OFICINA, ALTO_OFICINA))
+        capa.fill((0, 0, 0))
+        capa.set_alpha(225)
+        _capa_apagon.append(capa)
+    return _capa_apagon[0]
 
 def dibujar_oficina_con_imagen(luz_izq_efectiva, luz_der_efectiva):
     # Fondo alternativo opcional: si existe oficina_puerta_abierta.png se usa con la puerta abierta
@@ -1656,9 +1667,7 @@ def dibujar_oficina_con_imagen(luz_izq_efectiva, luz_der_efectiva):
 
     # --- APAGÓN TOTAL ---
     if en_apagon:
-        capa_oscura = pygame.Surface((ANCHO_OFICINA, ALTO_OFICINA), pygame.SRCALPHA)
-        capa_oscura.fill((0, 0, 0, 225))
-        superficie_oficina.blit(capa_oscura, (0, 0))
+        superficie_oficina.blit(capa_apagon_oficina(), (0, 0))
         t_ap = tiempo_juego() - tiempo_inicio_apagon
         if 2.5 < t_ap < 12.0 and random.random() < 0.75:
             sp_b = sprite("barnaby_oficina") or sprite("barnaby_cam")
@@ -1702,9 +1711,7 @@ def dibujar_oficina_con_imagen(luz_izq_efectiva, luz_der_efectiva):
         pygame.draw.rect(superficie_oficina, (40, 38, 34), rp, 10)
         pygame.draw.rect(superficie_oficina, (12, 12, 12), rp, 3)
     elif not puerta_izq_cerrada and luz_izq_efectiva:
-        brillo_izq = pygame.Surface(rp.size)
-        brillo_izq.fill((38, 34, 18))
-        superficie_oficina.blit(brillo_izq, rp.topleft, special_flags=pygame.BLEND_RGB_ADD)
+        superficie_oficina.fill((38, 34, 18), rp, special_flags=pygame.BLEND_RGB_ADD)
     if not puerta_izq_cerrada and penny.nodo_actual == 3:
         sp_penny = sprite("penny_puerta") or sprite("penny_cam")
         superficie_oficina.set_clip(rp)

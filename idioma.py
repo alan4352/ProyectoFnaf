@@ -244,9 +244,24 @@ T = traducir
 
 
 class FuenteTraducible(pygame.font.Font):
-    """Fuente que traduce el texto antes de dibujarlo o medirlo."""
-    def render(self, texto, *args, **kwargs):
-        return super().render(traducir(texto), *args, **kwargs)
+    """Fuente que traduce el texto antes de dibujarlo o medirlo.
+
+    Guarda los textos ya dibujados: casi todos se repiten cuadro a cuadro y dibujar letras es
+    caro (sobre todo en el celular). Quien reciba el texto no debe modificarlo (usar .copy()).
+    """
+    def render(self, texto, antialias=True, color=(255, 255, 255), fondo=None, *args, **kwargs):
+        texto = traducir(texto)
+        if args or kwargs:
+            return super().render(texto, antialias, color, fondo, *args, **kwargs)
+        cache = self.__dict__.setdefault("_cache_textos", {})
+        clave = (texto, bool(antialias), tuple(color), tuple(fondo) if fondo else None, self.get_bold())
+        sup = cache.get(clave)
+        if sup is None:
+            if len(cache) > 400:
+                cache.clear()
+            sup = super().render(texto, antialias, color, fondo)
+            cache[clave] = sup
+        return sup
 
     def size(self, texto):
         return super().size(traducir(texto))
