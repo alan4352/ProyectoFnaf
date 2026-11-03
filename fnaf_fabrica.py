@@ -331,7 +331,7 @@ def _silueta(img):
     return s_
 
 ASSETS["unidad0"] = _silueta(ASSETS.get("barnaby_cam"))
-if ASSETS.get("jumpscare_Barnaby"):
+if not ASSETS.get("jumpscare_Unidad 0") and ASSETS.get("jumpscare_Barnaby"):
     _js = ASSETS["jumpscare_Barnaby"].copy()
     _js.fill((55, 40, 45), special_flags=pygame.BLEND_RGB_MULT)
     _js.fill((40, 0, 0), special_flags=pygame.BLEND_RGB_ADD)
@@ -1701,6 +1701,10 @@ def dibujar_oficina_con_imagen(luz_izq_efectiva, luz_der_efectiva):
         superficie_oficina.blit(hueco, rp.topleft)
         pygame.draw.rect(superficie_oficina, (40, 38, 34), rp, 10)
         pygame.draw.rect(superficie_oficina, (12, 12, 12), rp, 3)
+    elif not puerta_izq_cerrada and luz_izq_efectiva:
+        brillo_izq = pygame.Surface(rp.size)
+        brillo_izq.fill((38, 34, 18))
+        superficie_oficina.blit(brillo_izq, rp.topleft, special_flags=pygame.BLEND_RGB_ADD)
     if not puerta_izq_cerrada and penny.nodo_actual == 3:
         sp_penny = sprite("penny_puerta") or sprite("penny_cam")
         superficie_oficina.set_clip(rp)
