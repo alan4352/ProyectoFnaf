@@ -61,6 +61,12 @@ def verificar_assets():
         "bunny_cam.png", "bunny_ventana.png",
         "silas_vent.png", "silas_techo.png",
         "unidad0.png",
+        # Sprites específicos por cámara
+        "barnaby_cam02.png", "barnaby_cam07.png",
+        "penny_cam03.png", "penny_cam06.png",
+        "bunny_cam04.png", "bunny_cam05.png", "bunny_cam08.png",
+        "silas_vent02.png", "silas_vent03.png", "silas_vent04.png",
+        "unidad0_cam06.png", "unidad0_cam02.png", "unidad0_cam07.png",
         *(f"{sp}_{k:02d}.png" for sp in ("barnaby_oficina", "barnaby_cerca", "penny_puerta", "bunny_ventana", "silas_techo", "unidad0") for k in range(3)),
         # Jumpscares animados
         *(f"jumpscare_{a}_{k:02d}.jpg" for a in ("barnaby", "penny", "bunny", "silas", "unidad0") for k in range(3)),
