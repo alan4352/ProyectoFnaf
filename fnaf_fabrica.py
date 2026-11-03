@@ -2228,7 +2228,7 @@ def dibujar_panel_llamada():
             txt_dialogo = fuente_llamada.render(linea, True, (240, 245, 240))
             pantalla.blit(txt_dialogo, (rect_caja.x + 20, rect_caja.y + 34 + n_linea * 20))
 
-        rect_mute = pygame.Rect(rect_caja.right + 15, 20, 140, 82)
+        rect_mute = pygame.Rect(rect_caja.right + 15, 20, 140, rect_caja.height)
         pygame.draw.rect(pantalla, (120, 30, 30), rect_mute, border_radius=4)
         pygame.draw.rect(pantalla, (220, 60, 60), rect_mute, 2)
         txt_m1 = fuente_pequeña.render("[MUTE CALL]", True, (255, 255, 255))
@@ -3728,7 +3728,7 @@ while True:
                         panel_mantenimiento_abierto = False
                         reproducir_sonido(sfx_reboot_click)
                 else:
-                    rect_mute_btn = pygame.Rect(775, 20, 140, 82)
+                    rect_mute_btn = pygame.Rect(775, 20, 140, 98)   # Alto máximo del cartel de la llamada (3 líneas)
                     if evento.button == 1 and llamada_activa and not llamada_muteada and rect_mute_btn.collidepoint(mouse_pos):
                         llamada_muteada = True
                         CANAL_VOZ.stop()
