@@ -236,12 +236,13 @@ class Cinta:
         self.volver_al_inicio()
 
     def ganar(self):
+        import idioma
         self.fase = "outro"
         lineas = list(self.datos["outro"]) + [""]
         if self.prueba:
-            lineas += ["PRUEBA ENCONTRADA: " + self.datos["prueba"], self.datos["prueba_detalle"]]
+            lineas += [idioma.T("PRUEBA ENCONTRADA: " + self.datos["prueba"]), self.datos["prueba_detalle"]]
         else:
-            lineas += ["PRUEBA NO ENCONTRADA.", "Puedes repetir esta cinta desde ARCHIVO 1982 en el menú."]
+            lineas += [idioma.T("PRUEBA NO ENCONTRADA."), idioma.T("Puedes repetir esta cinta desde ARCHIVO 1982 en el menú.")]
         self.maquina = MaquinaDeEscribir(lineas)
         self.sonar("ok")
 
@@ -310,9 +311,9 @@ class Cinta:
             y = 190
             for i, linea in enumerate(self.maquina.lineas_visibles()):
                 color = (220, 225, 220)
-                if linea.startswith("PRUEBA ENCONTRADA"):
+                if linea.startswith(("PRUEBA ENCONTRADA", "EVIDENCE FOUND")):
                     color = (255, 210, 90)
-                elif linea.startswith("PRUEBA NO"):
+                elif linea.startswith(("PRUEBA NO", "EVIDENCE NOT")):
                     color = (150, 150, 150)
                 _centrado(pantalla, f["media"], linea, y, color)
                 y += 36
@@ -738,8 +739,10 @@ class CintaRuben(Cinta):
     def ve_al_jugador(self):
         dx, dy = self.px - self.gx, self.py - self.gy
         dist = math.hypot(dx, dy)
-        if dist > self.LARGO_VISION or dist < 1:
-            return dist < 6
+        if dist < 6:
+            return True
+        if dist > self.LARGO_VISION:
+            return False
         dif = (math.atan2(dy, dx) - self.dir_guardia + math.pi) % (2 * math.pi) - math.pi
         if abs(dif) > self.ANGULO_VISION:
             return False
@@ -858,8 +861,10 @@ class Vigilante:
     def ve(self, px, py, muros):
         dx, dy = px - self.x, py - self.y
         dist = math.hypot(dx, dy)
-        if dist > self.largo or dist < 1:
-            return dist < 6
+        if dist < 6:
+            return True
+        if dist > self.largo:
+            return False
         dif = (math.atan2(dy, dx) - self.dir + math.pi) % (2 * math.pi) - math.pi
         if abs(dif) > self.angulo:
             return False

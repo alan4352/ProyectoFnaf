@@ -29,10 +29,10 @@ _fuente = None
 # nombre: (rectángulo, texto, tipo, acción). tipo "pulsar" manda la tecla una vez; "mantener" la deja apretada
 BOTONES = {
     "pausa": (pygame.Rect(12, 520, 92, 50), "PAUSA", "pulsar", "pausa"),
-    "techo": (pygame.Rect(1036, 318, 152, 84), "TECHO", "pulsar", "techo"),
-    "linterna": (pygame.Rect(1036, 414, 152, 120), "LINTERNA", "mantener", "linterna"),
-    "bajar": (pygame.Rect(1036, 318, 152, 84), "BAJAR", "pulsar", "bajar"),
-    "sellar": (pygame.Rect(1036, 414, 152, 120), "SELLAR", "pulsar", "sellar"),
+    "techo": (pygame.Rect(1036, 405, 152, 76), "TECHO", "pulsar", "techo"),
+    "linterna": (pygame.Rect(1036, 493, 152, 110), "LINTERNA", "mantener", "linterna"),
+    "bajar": (pygame.Rect(1036, 405, 152, 76), "BAJAR", "pulsar", "bajar"),
+    "sellar": (pygame.Rect(1036, 493, 152, 110), "SELLAR", "pulsar", "sellar"),
     "ir": (pygame.Rect(1012, 108, 176, 52), "VISIÓN IR", "pulsar", "vision"),
 }
 _CRUZ_CENTRO = (1080, 560)
@@ -186,7 +186,7 @@ def dibujar(sup):
     visibles = _visibles() - {"clic_largo"}
     if not visibles:
         return
-    clave = (frozenset(visibles), _boton_apretado)
+    clave = (frozenset(visibles), _boton_apretado, _traducir("TECHO"))
     capa = _cache_dibujo.get(clave)
     if capa is None:
         if len(_cache_dibujo) > 40:

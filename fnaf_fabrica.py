@@ -221,7 +221,7 @@ def actualizar_audio_continuo():
         CANAL_MUSICA.play(musica_menu, loops=-1, fade_ms=800)
     elif not en_menu and CANAL_MUSICA.get_busy():
         CANAL_MUSICA.fadeout(600)
-    if estado_actual != ESTADO_JUEGO and CANAL_VOZ.get_busy():
+    if (estado_actual != ESTADO_JUEGO or juego_terminado or en_jumpscare) and CANAL_VOZ.get_busy():
         CANAL_VOZ.stop()
 
 # -------------------------------------------------------------
@@ -806,6 +806,12 @@ class Animatronico:
             return
 
         sala_actual = str(self.ruta[self.nodo_actual])
+        if (self.nombre == "Penny" and sala_actual == "PUERTA_IZQ") or (self.nombre == "Rusty Bunny" and sala_actual == "VENTANA_DER"):
+            self.ultimo_tick = tiempo_juego()
+            return
+        if self.nombre == "Barnaby" and linterna_pasillo and self.nodo_actual in (2, 3):
+            self.ultimo_tick = tiempo_juego()
+            return
         if monitor_abierto and progreso_monitor >= 0.95 and vision_nocturna_cam and not error_camaras and (camara_seleccionada in sala_actual):
             self.ultimo_tick = tiempo_juego()
             return
@@ -836,6 +842,9 @@ class Animatronico:
                 reproducir_sonido(sfx_paso_metal, 0.9, 0.1)
                 subtitulo("PASOS METÁLICOS", -1)
             elif self.nombre == "Rusty Bunny":
+                if nodo_nuevo == "VENTANA_DER" and persiana_der_sostenida:
+                    global tiempo_inicio_persiana
+                    tiempo_inicio_persiana = tiempo_juego()
                 reproducir_sonido(sfx_paso_metal, 0.1, 0.9)
                 subtitulo("PASOS METÁLICOS", 1)
             elif self.nombre == "Silas":
@@ -1075,6 +1084,9 @@ def comenzar_noche(noche):
     modificadores = dict(desafio_elegido["mods"]) if (noche == "CUSTOM" and desafio_elegido) else {}
     bateria = float(modificadores.get("bateria_inicial", 100))
     tiempo_siguiente_fallo = tiempo_juego() + random.uniform(*intervalo_fallas())
+    global tiempo_inicio_persiana, fantasma_cam, fantasma_hasta
+    tiempo_inicio_persiana = 0.0
+    fantasma_cam, fantasma_hasta = None, 0.0
     uso_puerta_noche = False
     puerta_t_cerrada, puerta_trabada_hasta = 0.0, 0.0
 
@@ -2199,7 +2211,9 @@ def partir_texto(texto, fuente, ancho_max):
 def dibujar_panel_llamada():
     lista_actual = llamada_lista
     if llamada_activa and not llamada_muteada and not en_apagon and indice_dialogo < len(lista_actual):
-        rect_caja = pygame.Rect(40, 20, 720, 82)
+        lineas_llamada = partir_texto(lista_actual[indice_dialogo], fuente_llamada, 680)[:3]
+        alto_caja = 98 if len(lineas_llamada) >= 3 else 82
+        rect_caja = pygame.Rect(40, 20, 720, alto_caja)
         s_caja = pygame.Surface((rect_caja.width, rect_caja.height), pygame.SRCALPHA)
         s_caja.fill((12, 16, 20, 230))
         pantalla.blit(s_caja, (rect_caja.x, rect_caja.y))
@@ -2210,9 +2224,9 @@ def dibujar_panel_llamada():
         txt_tag = fuente_cam.render(f"LÍNEA ACTIVA // SUPERVISIÓN TURNO {noche_actual}", True, (40, 240, 120))
         pantalla.blit(txt_tag, (rect_caja.x + 35, rect_caja.y + 15))
 
-        for n_linea, linea in enumerate(partir_texto(lista_actual[indice_dialogo], fuente_llamada, rect_caja.width - 40)[:2]):
+        for n_linea, linea in enumerate(lineas_llamada):
             txt_dialogo = fuente_llamada.render(linea, True, (240, 245, 240))
-            pantalla.blit(txt_dialogo, (rect_caja.x + 20, rect_caja.y + 34 + n_linea * 21))
+            pantalla.blit(txt_dialogo, (rect_caja.x + 20, rect_caja.y + 34 + n_linea * 20))
 
         rect_mute = pygame.Rect(rect_caja.right + 15, 20, 140, 82)
         pygame.draw.rect(pantalla, (120, 30, 30), rect_mute, border_radius=4)
@@ -2281,7 +2295,8 @@ def dibujar_menu_principal():
 
     if evidencias:
         txt_ev = fuente_cam.render(f"PRUEBAS: {len(evidencias)}/4   LOGROS: {len(progreso.logros)}/{len(LOGROS)}", True, (255, 210, 90))
-        pantalla.blit(txt_ev, (760, 180))
+        y_ev = 145 if (record_20_20_20_20 and estrellas >= 3) else 180
+        pantalla.blit(txt_ev, (760, y_ev))
     desbloq_cust = (noche_desbloqueada >= 5 or juego_completado_5_noches)
     items = [("NUEVO", "NUEVO JUEGO", (40, 160, 110), True),
              ("CONTINUAR", f"CONTINUAR (N.{min(noche_desbloqueada, 5)})", (40, 160, 220), noche_desbloqueada > 1)]
@@ -2406,7 +2421,7 @@ def dibujar_pantalla_periodico():
     p = final["periodico"]
     verdadero = final is FINAL_VERDADERO
     pantalla.fill((12, 12, 14))
-    img = ASSETS.get("periodico_verdadero" if verdadero else "periodico")
+    img = ASSETS.get("periodico_verdadero" if verdadero else "periodico") if idioma.ACTUAL.get("idioma") != "en" else None
     if img:
         pantalla.blit(img, (0, 0))
     else:
@@ -2445,8 +2460,12 @@ def dibujar_pantalla_periodico():
         pygame.draw.rect(pantalla, color_sello, sello, 3)
         pantalla.blit(txt_sello, (sello.x + 20, sello.y + 10))
 
-    txt_cont = fuente_cam.render("[PULSA ESPACIO O HAZ CLIC PARA CONTINUAR]", True, (180, 190, 195))
-    pantalla.blit(txt_cont, (ANCHO_VENTANA // 2 - txt_cont.get_width() // 2, ALTO_VENTANA - 25))
+    txt_cont = fuente_cam.render("[PULSA ESPACIO O HAZ CLIC PARA CONTINUAR]", True, (235, 240, 245))
+    caja_cont = pygame.Rect(0, 0, txt_cont.get_width() + 24, txt_cont.get_height() + 8)
+    caja_cont.center = (ANCHO_VENTANA // 2, ALTO_VENTANA - 18)
+    pantalla.fill((10, 12, 14), caja_cont)
+    pygame.draw.rect(pantalla, (90, 80, 65), caja_cont, 1)
+    pantalla.blit(txt_cont, (caja_cont.x + 12, caja_cont.y + 4))
 
 RECT_BTN_REINTENTAR = pygame.Rect(ANCHO_VENTANA // 2 - 290, 520, 270, 55)
 RECT_BTN_MENU_MUERTE = pygame.Rect(ANCHO_VENTANA // 2 + 20, 520, 270, 55)
@@ -2854,7 +2873,7 @@ def registrar_fin_de_noche():
             progreso.desbloquear("intocable")
     if noche_actual == 6:
         progreso.desbloquear("horas_extra")
-    if noche_actual == "CUSTOM" and all(v == 20 for v in ia_custom.values()):
+    if noche_actual == "CUSTOM" and not desafio_elegido and all(v == 20 for v in ia_custom.values()):
         progreso.desbloquear("veinte")
     if noche_actual != "CUSTOM" and noche_actual != 1:
         if not uso_puerta_noche:
@@ -2889,14 +2908,16 @@ def dibujar_aviso_logro(sup):
         guardar_progreso()
     if aviso_logro_actual and ahora_l <= aviso_logro_hasta:
         _, nombre, desc, _ = NOMBRES_LOGROS[aviso_logro_actual]
-        caja = pygame.Rect(sup.get_width() - 430, sup.get_height() - 190, 410, 70)
+        txt_desc_l = fuente_cam.render(T(desc), True, (190, 190, 180))
+        ancho_caja_l = max(410, txt_desc_l.get_width() + 82)
+        caja = pygame.Rect(sup.get_width() - ancho_caja_l - 20, sup.get_height() - 190, ancho_caja_l, 70)
         sup.fill((20, 16, 6), caja)
         pygame.draw.rect(sup, (240, 200, 60), caja, 2)
         pygame.draw.circle(sup, (240, 200, 60), (caja.x + 35, caja.centery), 18)
         pygame.draw.circle(sup, (255, 240, 170), (caja.x + 35, caja.centery), 9)
         sup.blit(fuente_cam.render("LOGRO DESBLOQUEADO", True, (240, 200, 60)), (caja.x + 65, caja.y + 10))
         sup.blit(fuente_pequeña.render(T(nombre), True, (255, 255, 255)), (caja.x + 65, caja.y + 28))
-        sup.blit(fuente_cam.render(T(desc)[:52], True, (190, 190, 180)), (caja.x + 65, caja.y + 48))
+        sup.blit(txt_desc_l, (caja.x + 65, caja.y + 48))
 
 def boton_lista(items, x, y0, paso, ancho=340, alto=52):
     """Dibuja una columna de botones. items = [(clave, texto, color, habilitado)]. Devuelve [(clave, rect, habilitado)]."""
@@ -3208,7 +3229,7 @@ while True:
             if evento.type == pygame.QUIT:
                 pygame.quit()
                 sys.exit()
-            if evento.type == pygame.KEYDOWN and evento.key in [pygame.K_SPACE, pygame.K_RETURN]:
+            if (evento.type == pygame.MOUSEBUTTONDOWN and evento.button == 1) or (evento.type == pygame.KEYDOWN and evento.key in [pygame.K_SPACE, pygame.K_RETURN]):
                 if t_transcurrido >= 2.5:
                     t_transcurrido = 99   # Salta directo a lo que sigue (abajo)
 
@@ -3249,7 +3270,7 @@ while True:
                         guardar_progreso()
                     lineas_final = list(final_actual["lineas"])
                     if final_actual is FINAL_VERDADERO:
-                        lineas_final += ["", "(NOCHE 6 DESBLOQUEADA EN EL MENÚ)"]
+                        lineas_final += ["", T("(NOCHE 6 DESBLOQUEADA EN EL MENÚ)")]
                     mostrar_relato(final_actual["titulo"], lineas_final, fin_del_juego_y_resumen, color_final)
 
         aplicar_postprocesado_crt(dt, intensidad_aberracion=1)
@@ -3586,8 +3607,13 @@ while True:
             bobina_generador = min(100.0, bobina_generador + 24.0 * dt)
             reproducir_sonido(sfx_bobina_cuerda, 0.4, 0.4)
         else:
-            # La bobina se presenta en la llamada de la noche 3: antes no se descarga
-            drenaje_bobina = 0.0 if noche_actual in [1, 2] else (3.2 if noche_actual in [3, 4] else 4.2)
+            # La bobina se presenta en la llamada de la noche 3: antes no se descarga (ni si Rusty está en 0)
+            if bunny.nivel_ia <= 0 or noche_actual in [1, 2]:
+                drenaje_bobina = 0.0
+            elif noche_actual in [3, 4] or (noche_actual == "INFINITO" and infinito_horas < 3):
+                drenaje_bobina = 3.2
+            else:
+                drenaje_bobina = 4.2
             bobina_generador = max(0.0, bobina_generador - drenaje_bobina * dt)
 
         if bobina_generador <= 0.0:
@@ -3620,7 +3646,7 @@ while True:
             reproducir_sonido(sfx_reboot_click)
 
     lista_dialogos_actual = llamada_lista
-    if llamada_activa and not llamada_muteada and not en_apagon:
+    if llamada_activa and not llamada_muteada and not en_apagon and not juego_terminado and not en_jumpscare:
         ahora = tiempo_juego()
         if indice_dialogo == 0 and ahora - tiempo_repique >= 2.2:
             reproducir_sonido(sfx_timbre)
@@ -3680,6 +3706,8 @@ while True:
 
             if evento.type == pygame.MOUSEBUTTONDOWN:
                 if panel_mantenimiento_abierto:
+                    if evento.button != 1:
+                        continue
                     btn_rv, btn_rc, btn_rall, btn_close = dibujar_panel_mantenimiento()
                     if btn_rv.collidepoint(mouse_pos) and not reboot_activo:
                         reboot_activo = "VENT"
@@ -3701,28 +3729,29 @@ while True:
                         reproducir_sonido(sfx_reboot_click)
                 else:
                     rect_mute_btn = pygame.Rect(775, 20, 140, 82)
-                    if llamada_activa and not llamada_muteada and rect_mute_btn.collidepoint(mouse_pos):
+                    if evento.button == 1 and llamada_activa and not llamada_muteada and rect_mute_btn.collidepoint(mouse_pos):
                         llamada_muteada = True
                         CANAL_VOZ.stop()
                         reproducir_sonido(sfx_timbre)
 
-                    if rect_toggle_camara.collidepoint(mouse_pos) and not mirando_techo:
+                    if evento.button == 1 and rect_toggle_camara.collidepoint(mouse_pos) and not mirando_techo:
                         monitor_abierto = not monitor_abierto
                         reproducir_sonido(sfx_monitor_movimiento)
                         reproducir_sonido(sfx_estatica_cctv)
 
                     if monitor_abierto and progreso_monitor >= 0.8:
-                        if btn_modo_rect.collidepoint(mouse_pos):
+                        if evento.button == 1 and btn_modo_rect.collidepoint(mouse_pos):
                             modo_ventilacion = not modo_ventilacion
                             camara_seleccionada = "VENT_01" if modo_ventilacion else "CAM_01"
                             reproducir_sonido(sfx_estatica_cctv)
 
-                        if modo_ventilacion and btn_lure_rect.collidepoint(mouse_pos) and lure_cooldown <= 0.0:
+                        if evento.button == 1 and modo_ventilacion and btn_lure_rect.collidepoint(mouse_pos) and lure_cooldown <= 0.0:
                             lure_cooldown = 10.0
                             progreso.sumar("senuelos")
                             reproducir_sonido(sfx_lure_audio, 0.7, 0.7)
                             if silas.sala().startswith("VENT"):
                                 silas.nodo_actual = max(1, silas.nodo_actual - 1)
+                                silas.ultimo_tick = tiempo_juego()
                                 reproducir_sonido(sfx_conducto_metal, 0.6, 0.6)
 
                         if evento.button == 3 and not modo_ventilacion and not ir_agotado and not modificadores.get("sin_ir") and (100 <= mouse_pos[0] <= 820 and 80 <= mouse_pos[1] <= 560):
@@ -3748,7 +3777,7 @@ while True:
                                     elif trampa_ducto is None and trampa_cooldown <= 0.0:
                                         trampa_ducto = cam_id
                                         reproducir_sonido(sfx_puerta)
-                    elif not mirando_techo and progreso_monitor <= 0.2:
+                    elif evento.button == 1 and not mirando_techo and progreso_monitor <= 0.2:
                         x_of = mouse_pos[0] + cam_x
                         y_of = mouse_pos[1]
                         if 480 <= x_of <= 545 and 360 <= y_of <= 445:
@@ -3899,13 +3928,15 @@ while True:
 
     if not juego_terminado:
         if not monitor_abierto and not mirando_techo and not persiana_der_sostenida and not panel_mantenimiento_abierto and progreso_monitor <= 0.2:
-            if tactil.activo():
+            arrastre_tactil = tactil.tomar_arrastre() if tactil.activo() else 0.0
+            if arrastre_tactil:
                 # Con el dedo: arrastrar la vista (hacia la derecha se ve lo de la izquierda)
-                cam_x -= tactil.tomar_arrastre() * AJUSTES["vel_giro"] / 100.0
-            elif mouse_pos[0] < 150:
-                cam_x -= 650 * AJUSTES["vel_giro"] / 100.0 * dt
-            elif mouse_pos[0] > ANCHO_VENTANA - 150:
-                cam_x += 650 * AJUSTES["vel_giro"] / 100.0 * dt
+                cam_x -= arrastre_tactil * AJUSTES["vel_giro"] / 100.0
+            elif not tactil.activo() or mando.cursor_activo:
+                if mouse_pos[0] < 150:
+                    cam_x -= 650 * AJUSTES["vel_giro"] / 100.0 * dt
+                elif mouse_pos[0] > ANCHO_VENTANA - 150:
+                    cam_x += 650 * AJUSTES["vel_giro"] / 100.0 * dt
             cam_x = max(0, min(cam_x, ANCHO_OFICINA - ANCHO_VENTANA))
 
         progreso.stats["tiempo_jugado"] += dt
@@ -4008,15 +4039,25 @@ while True:
             else:
                 progreso_cegado_barnaby = max(0.0, progreso_cegado_barnaby - 0.8 * dt)
 
+            if silas.sala() == "REJILLA_OFICINA":
+                if ventilacion_sellada:
+                    silas.tiempo_en_ataque += dt
+                    if silas.tiempo_en_ataque >= 2.0:
+                        silas.volver_al_inicio()
+                        reproducir_sonido(sfx_conducto_metal, 0.5, 0.5)
+                else:
+                    silas.tiempo_en_ataque = 0.0
+
             if bunny.nodo_actual == 4:
-                if persiana_der_sostenida and progreso_persiana >= 0.85 and (tiempo_juego() - tiempo_inicio_persiana >= 2.0):
-                    bunny.volver_al_inicio()
-                    progreso.sumar("bunny_rechazado")
-                    bunny.tiempo_en_ataque = 0.0
-                    reproducir_sonido(sfx_paso_metal, 0.1, 0.9)
+                if persiana_der_sostenida and progreso_persiana >= 0.85:
+                    if tiempo_juego() - tiempo_inicio_persiana >= 2.0:
+                        bunny.volver_al_inicio()
+                        progreso.sumar("bunny_rechazado")
+                        bunny.tiempo_en_ataque = 0.0
+                        reproducir_sonido(sfx_paso_metal, 0.1, 0.9)
                 else:
                     bunny.tiempo_en_ataque += dt
-                    if bunny.tiempo_en_ataque >= 7.0 and (not persiana_der_sostenida or progreso_persiana < 0.85):
+                    if bunny.tiempo_en_ataque >= 7.0:
                         bunny.nodo_actual = 5
 
             if penny.nodo_actual == 3:
@@ -4043,8 +4084,7 @@ while True:
                 iniciar_jumpscare("Rusty Bunny", "RUSTY BUNNY DESTRUYÓ EL CRISTAL DE LA VENTANA")
 
         segundos_pasados = tiempo_juego() - tiempo_inicio
-        hora = 12 + int(segundos_pasados // DURACION_HORA_SEGUNDOS)
-        if hora > 12: hora -= 12
+        hora = (int(segundos_pasados // DURACION_HORA_SEGUNDOS) % 12) or 12
 
         # Más agresivos a las 2, 3 y 4 AM (solo en las noches de la historia)
         con_bonus = noche_actual not in ("CUSTOM", "INFINITO") and DIFICULTADES.get(AJUSTES.get("dificultad"), DIFICULTADES["normal"])["bonus_hora"]
@@ -4063,7 +4103,7 @@ while True:
                 noche_desbloqueada += 1
             if noche_actual == 5:
                 juego_completado_5_noches = True
-            if noche_actual == "CUSTOM" and all(v == 20 for v in ia_custom.values()):
+            if noche_actual == "CUSTOM" and not desafio_elegido and all(v == 20 for v in ia_custom.values()):
                 record_20_20_20_20 = True
             guardar_progreso()
             estado_actual = ESTADO_VICTORIA
