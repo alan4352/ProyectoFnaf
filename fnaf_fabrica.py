@@ -10,6 +10,7 @@ from recursos import *      # rutas y carga de imágenes/sonidos
 from audio import *         # sonidos sintéticos y reales
 from guardado import *      # save_data.json
 from datos import *         # dificultad, diálogos, cámaras, rutas
+import efectos as modulo_efectos
 from efectos import aplicar_crt, cortes_glitch, separar_rgb, linea_tracking, ruido
 from historia import *      # textos de la historia: llamadas, cintas, finales
 from minijuegos import crear_minijuego, Relato
@@ -45,7 +46,8 @@ CODIGO_DESARROLLO = "dunmore"
 VERSION = "1.1"
 pygame.init()
 try:
-    pygame.mixer.init(frequency=44100, size=-16, channels=2, buffer=512)
+    # En el celular un búfer más grande evita cortes de sonido y le saca trabajo al procesador
+    pygame.mixer.init(frequency=44100, size=-16, channels=2, buffer=1024 if tactil.ES_ANDROID else 512)
 except pygame.error:
     pygame.mixer.init()   # Algunos celulares no aceptan ese formato: se usa el que tengan
 pygame.mixer.set_num_channels(24)
@@ -63,6 +65,7 @@ ALTO_OFICINA = 700
 AJUSTES = cargar_ajustes()
 mapa_teclas.cargar(AJUSTES)
 tactil.modo = AJUSTES.get("tactil", "auto")
+modulo_efectos.REDUCIDOS = AJUSTES.get("efectos") == "bajos"
 tactil.detectar_web()
 import audio as modulo_audio
 modulo_audio.AJUSTES_AUDIO = AJUSTES
@@ -359,7 +362,8 @@ def dibujar_sprite_centrado(superficie, img, cx, cy, escala=1.0, brillo=255, viv
     """vivo=True: leve "respiración" y tirones de señal ocasionales (para cámaras)."""
     if img and vivo:
         t = tiempo_juego()
-        escala *= 1.0 + 0.012 * math.sin(t * 2.3 + cx * 0.05)
+        if not modulo_efectos.REDUCIDOS:   # La "respiración" obliga a reescalar la imagen seguido
+            escala *= 1.0 + 0.012 * math.sin(t * 2.3 + cx * 0.05)
         if random.random() < 0.035:
             cx += random.randint(-7, 7)
             cy += random.randint(-3, 3)
@@ -948,6 +952,8 @@ parpadeo_luz_proximo = 0.0
 
 def dibujar_parpadeo_luz():
     global parpadeo_luz_hasta, parpadeo_luz_proximo
+    if modulo_efectos.REDUCIDOS:
+        return
     ahora_p = tiempo_juego()
     if ahora_p >= parpadeo_luz_proximo:
         horas_noche = (ahora_p - tiempo_inicio) / DURACION_HORA_SEGUNDOS
@@ -2504,6 +2510,7 @@ OPCIONES_AJUSTES = [
     ("dificultad", "DIFICULTAD (HISTORIA)", "opciones", [(k, v["nombre"]) for k, v in DIFICULTADES.items()]),
     ("idioma", "IDIOMA / LANGUAGE", "opciones", [("es", "ESPAÑOL"), ("en", "ENGLISH")]),
     ("subtitulos", "SUBTÍTULOS DE SONIDOS", "si_no", None),
+    ("efectos", "EFECTOS VISUALES", "opciones", [("altos", "ALTOS"), ("bajos", "BAJOS (MÁS RÁPIDO)")]),
     ("tactil", "BOTONES TÁCTILES", "opciones", [("auto", "AUTOMÁTICO"), ("si", "SÍ"), ("no", "NO")]),
 ]
 AYUDA_AJUSTES = {
@@ -2514,10 +2521,11 @@ AYUDA_AJUSTES = {
     "pantalla_completa": "También se cambia en cualquier momento con F11.",
     "dificultad": "Se aplica a las noches 1 a 6 desde la próxima noche. HISTORIA: más fácil, para ver la historia.",
     "idioma": "Cambia el idioma de todo el juego.",
+    "efectos": "BAJOS apaga el parpadeo de la luz, la banda de VHS y el glitch de los jumpscares. Para celulares lentos.",
     "tactil": "Botones en pantalla para jugar con el dedo (linterna, techo, pausa...). AUTOMÁTICO: solo en celulares.",
     "subtitulos": "Muestra en pantalla los sonidos importantes (pasos, respiración, golpes) y de qué lado vienen.",
 }
-Y_AJUSTES, ALTO_FILA_AJUSTES = 96, 34
+Y_AJUSTES, ALTO_FILA_AJUSTES = 96, 32
 X_CONTROL, ANCHO_CONTROL = 640, 400
 
 def cambiar_ajuste(clave, direccion=1, valor=None):
@@ -2539,6 +2547,8 @@ def cambiar_ajuste(clave, direccion=1, valor=None):
         aplicar_idioma()
     if clave == "tactil":
         tactil.modo = AJUSTES["tactil"]
+    if clave == "efectos":
+        modulo_efectos.REDUCIDOS = AJUSTES["efectos"] == "bajos"
     if clave in ("pantalla_completa", "escalado"):
         ventana.aplicar_modo()
     if clave in ("vol_general", "vol_musica", "vol_voces"):

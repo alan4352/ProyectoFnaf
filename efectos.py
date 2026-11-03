@@ -57,9 +57,15 @@ def aplicar_crt(pantalla, intensidad_aberracion=1):
 # -------------------------------------------------------------
 import random as _random
 
+# Efectos visuales reducidos (ajuste EFECTOS VISUALES = BAJOS, el de fábrica en el celular):
+# se saltean los efectos de pantalla completa más caros (glitch, colores separados, banda de VHS).
+REDUCIDOS = False
+
 
 def cortes_glitch(sup, cantidad=8, amplitud=40, rect=None):
     """Corta franjas horizontales de la imagen y las corre de lugar (señal rota)."""
+    if REDUCIDOS:
+        return
     zona = rect or sup.get_rect()
     for _ in range(cantidad):
         alto = _random.randint(3, 34)
@@ -74,6 +80,8 @@ def cortes_glitch(sup, cantidad=8, amplitud=40, rect=None):
 
 def separar_rgb(sup, desplazamiento=8):
     """Separa los canales de color: el rojo se corre a un lado y el cian al otro."""
+    if REDUCIDOS:
+        return
     rojo = sup.copy()
     rojo.fill((255, 0, 0), special_flags=pygame.BLEND_RGB_MULT)
     sup.fill((0, 255, 255), special_flags=pygame.BLEND_RGB_MULT)
@@ -82,6 +90,8 @@ def separar_rgb(sup, desplazamiento=8):
 
 def linea_tracking(sup, t, rect, velocidad=55.0):
     """Banda de 'tracking' de VHS que baja lentamente por la imagen."""
+    if REDUCIDOS:
+        return
     alto_banda = 26
     recorrido = rect.h + alto_banda * 2
     y = rect.top - alto_banda + int((t * velocidad) % recorrido)

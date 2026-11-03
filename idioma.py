@@ -59,6 +59,9 @@ UI_EN = {
     "VISIÓN NOCTURNA (EN CÁMARAS)": "NIGHT VISION (ON CAMERAS)", "COMPUERTA": "DOOR",
     "CLIC": "CLICK", "CLIC DERECHO / LINTERNA": "RIGHT-CLICK / FLASHLIGHT", "CÁMARAS": "CAMERAS",
     "VISIÓN NOCTURNA": "NIGHT VISION", "CURSOR / MOVERSE": "CURSOR / MOVE", "CRUCETA": "D-PAD", "FLECHAS": "ARROWS",
+    "EFECTOS VISUALES": "VISUAL EFFECTS", "ALTOS": "HIGH", "BAJOS (MÁS RÁPIDO)": "LOW (FASTER)",
+    "BAJOS apaga el parpadeo de la luz, la banda de VHS y el glitch de los jumpscares. Para celulares lentos.":
+        "LOW turns off the light flicker, the VHS band and the jumpscare glitch. For slow phones.",
     "BOTONES TÁCTILES": "TOUCH BUTTONS", "AUTOMÁTICO": "AUTOMATIC", "LINTERNA": "FLASHLIGHT", "TECHO": "CEILING",
     "BAJAR": "DOWN", "SELLAR": "SEAL", "VISIÓN IR": "IR VISION",
     "Botones en pantalla para jugar con el dedo (linterna, techo, pausa...). AUTOMÁTICO: solo en celulares.":

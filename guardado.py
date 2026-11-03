@@ -79,6 +79,7 @@ AJUSTES_POR_DEFECTO = {
     "dificultad": "normal",     # "historia", "normal" o "pesadilla"
     "idioma": "es",             # "es" (español) o "en" (inglés)
     "subtitulos": False,        # Mostrar en pantalla los sonidos importantes
+    "efectos": "bajos" if (EN_ANDROID or EN_NAVEGADOR) else "altos",   # Efectos visuales: "altos" o "bajos"
     "tactil": "auto",           # Botones táctiles: "auto" (celular), "si" o "no"
     "teclas": {},               # Teclas cambiadas en AJUSTES > CONTROLES ({"puerta": "q", ...})
 }
