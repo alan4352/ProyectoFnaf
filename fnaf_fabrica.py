@@ -190,7 +190,7 @@ NOTAS_CAJA_MUSICA = [
 
 # Gritos de jumpscare (uno por animatrónico) y ambiente
 GRITOS = {n: cargar_sonido_opcional(f"grito_{a}") for n, a in
-          [("Barnaby", "barnaby"), ("Silas", "silas"), ("Penny", "penny"), ("Rusty Bunny", "bunny")]}
+          [("Barnaby", "barnaby"), ("Silas", "silas"), ("Penny", "penny"), ("Rusty Bunny", "bunny"), ("Unidad 0", "unidad0")]}
 sfx_ambiente = sonido("ambiente", 3.0, 55, "seno", fade=False)
 if "ambiente" not in SONIDOS_REALES:
     sfx_ambiente.set_volume(0.12)
@@ -199,7 +199,7 @@ caja_musica = cargar_sonido_opcional("caja_musica")   # Melodía del apagón (si
 modulo_audio.al_progreso = None
 VOCES_LLAMADA = {n: cargar_sonido_opcional(f"llamada_noche_{n}") for n in range(1, 6)}
 print(f"[AUDIO] Archivos reales: {', '.join(SONIDOS_REALES) or 'ninguno'}"
-      f" | gritos: {sum(1 for g in GRITOS.values() if g)}/4"
+      f" | gritos: {sum(1 for g in GRITOS.values() if g)}/5"
       f" | voces: {sum(1 for v in VOCES_LLAMADA.values() if v)}/5"
       f" | música menú: {'sí' if musica_menu else 'no'} | caja de música: {'sí' if caja_musica else 'no'}")
 
@@ -286,8 +286,11 @@ for _nombre, _archivo in JUMPSCARE_ARCHIVOS.items():
     ASSETS[f"jumpscare_{_nombre}"] = escalar_cubriendo(cargar_imagen_opcional(_archivo, opaca=True), int(ANCHO_VENTANA * 1.15), int(ALTO_VENTANA * 1.15))
 
 # Sprites con transparencia
-for _clave in ["barnaby_oficina", "barnaby_cam", "silas_techo", "silas_vent",
-               "penny_puerta", "penny_cam", "bunny_ventana", "bunny_cam"]:
+for _clave in ["barnaby_oficina", "barnaby_cerca", "barnaby_cam", "barnaby_cam02", "barnaby_cam07",
+               "penny_puerta", "penny_cam", "penny_cam03", "penny_cam06",
+               "bunny_ventana", "bunny_cam", "bunny_cam04", "bunny_cam05", "bunny_cam08",
+               "silas_techo", "silas_vent", "silas_vent02", "silas_vent03", "silas_vent04",
+               "unidad0", "unidad0_cam06", "unidad0_cam02", "unidad0_cam07"]:
     ASSETS[_clave] = cargar_imagen_opcional(f"{_clave}.png")
 
 # Animaciones por cuadros: si existen <nombre>_00.png, <nombre>_01.png, ... se reproducen en bucle.
@@ -303,8 +306,8 @@ def cargar_cuadros(clave, escalar=None):
         cuadros.append(escalar(img) if escalar else img)
     return cuadros
 
-for _clave in ["barnaby_oficina", "barnaby_cam", "silas_techo", "silas_vent",
-               "penny_puerta", "penny_cam", "bunny_ventana", "bunny_cam"]:
+for _clave in ["barnaby_oficina", "barnaby_cerca", "barnaby_cam", "silas_techo", "silas_vent",
+               "penny_puerta", "penny_cam", "bunny_ventana", "bunny_cam", "unidad0"]:
     _cuadros = cargar_cuadros(_clave)
     if _cuadros:
         ANIMS[_clave] = _cuadros
@@ -336,7 +339,8 @@ def _silueta(img):
         pygame.draw.circle(s_, (230, 240, 255, 255), (int(w * ex), int(h * 0.16)), max(3, w // 60))
     return s_
 
-ASSETS["unidad0"] = _silueta(ASSETS.get("barnaby_cam"))
+if not ASSETS.get("unidad0"):
+    ASSETS["unidad0"] = _silueta(ASSETS.get("barnaby_cam"))
 if not ASSETS.get("jumpscare_Unidad 0") and ASSETS.get("jumpscare_Barnaby"):
     _js = ASSETS["jumpscare_Barnaby"].copy()
     _js.fill((55, 40, 45), special_flags=pygame.BLEND_RGB_MULT)
@@ -1691,7 +1695,7 @@ def dibujar_oficina_con_imagen(luz_izq_efectiva, luz_der_efectiva):
         superficie_oficina.blit(capa_apagon_oficina(), (0, 0))
         t_ap = tiempo_juego() - tiempo_inicio_apagon
         if 2.5 < t_ap < 12.0 and random.random() < 0.75:
-            sp_b = sprite("barnaby_oficina") or sprite("barnaby_cam")
+            sp_b = sprite("barnaby_cerca") or sprite("barnaby_oficina") or sprite("barnaby_cam")
             dibujar_sprite_centrado(superficie_oficina, sp_b, RECT_PUERTA_IMG.centerx, 400, 1.15, 45)
         return
 
@@ -1755,10 +1759,13 @@ def dibujar_oficina_con_imagen(luz_izq_efectiva, luz_der_efectiva):
         pygame.draw.ellipse(haz, (255, 245, 190, 35), (110, 80, 280, 260))
         superficie_oficina.blit(haz, (px - 250, py - 200))
 
-        sp_barnaby = sprite("barnaby_oficina") or sprite("barnaby_cam")
+        if unidad0.activa and unidad0.en_pasillo() and barnaby.nodo_actual not in [2, 3]:
+            dibujar_sprite_centrado(superficie_oficina, sprite("unidad0"), px, py + 25, 0.62, 220)
         if barnaby.nodo_actual == 2:
+            sp_barnaby = sprite("barnaby_oficina") or sprite("barnaby_cam")
             dibujar_sprite_centrado(superficie_oficina, sp_barnaby, px, py + 10, 0.45, 190)
         elif barnaby.nodo_actual == 3:
+            sp_barnaby = sprite("barnaby_cerca") or sprite("barnaby_oficina") or sprite("barnaby_cam")
             dibujar_sprite_centrado(superficie_oficina, sp_barnaby, px, py + 60, 0.95, 255)
 
         if barnaby.nodo_actual in [2, 3]:
@@ -1886,7 +1893,14 @@ def dibujar_feed_ventilacion():
 
     if silas_en_cam and trampa_ducto != camara_seleccionada:
         pos_x, pos_y, esc_s = con_pose(silas, 460, 335, 0.70)
-        dibujar_sprite_centrado(pantalla_camaras, sprite("silas_vent"), pos_x, pos_y, esc_s, 225, vivo=True)
+        mapa_silas = {
+            "VENT_01": sprite("silas_vent"),
+            "VENT_02": sprite("silas_vent02") or sprite("silas_vent"),
+            "VENT_03": sprite("silas_vent03") or sprite("silas_vent"),
+            "VENT_04": sprite("silas_vent04") or sprite("silas_vent"),
+        }
+        sp_silas = mapa_silas.get(camara_seleccionada, sprite("silas_vent"))
+        dibujar_sprite_centrado(pantalla_camaras, sp_silas, pos_x, pos_y, esc_s, 225, vivo=True)
 
 _capas_nv = []
 
@@ -1954,7 +1968,14 @@ def dibujar_sistema_camaras():
         # Unidad 0 (noche 6)
         if unidad0.activa and camara_seleccionada == unidad0.sala():
             ux, uy, ue = POS_UNIDAD0[camara_seleccionada]
-            dibujar_sprite_centrado(pantalla_camaras, ASSETS.get("unidad0"), ux, uy, ue, 235, vivo=True)
+            mapa_u0 = {
+                "CAM_04": sprite("unidad0"),
+                "CAM_06": sprite("unidad0_cam06") or sprite("unidad0"),
+                "CAM_02": sprite("unidad0_cam02") or sprite("unidad0"),
+                "CAM_07": sprite("unidad0_cam07") or sprite("unidad0"),
+            }
+            sp_u0 = mapa_u0.get(camara_seleccionada, sprite("unidad0"))
+            dibujar_sprite_centrado(pantalla_camaras, sp_u0, ux, uy, ue, 235, vivo=True)
             if unidad0.en_pasillo():
                 prog_r = unidad0.mirada / SEGUNDOS_PARA_RECHAZAR
                 pygame.draw.rect(pantalla_camaras, (20, 20, 24), (360, 130, 200, 10))
@@ -1973,7 +1994,7 @@ def dibujar_sistema_camaras():
                 lbl_f = fuente_grande.render("SALIDA", True, (200, 30, 30))
                 pantalla_camaras.blit(lbl_f, (460 - lbl_f.get_width() // 2, 470))
 
-        # Posicionamiento calibrado de animatrónicos en el feed
+        # Posicionamiento calibrado de animatrónicos en el feed con sprites únicos por cámara
         if camara_seleccionada == "CAM_01":
             if barnaby.nodo_actual == 0:
                 dibujar_sprite_centrado(pantalla_camaras, sprite("barnaby_cam"), 460, 340, 0.62, min(255, 230 + brillo_boost), vivo=True)
@@ -1984,35 +2005,50 @@ def dibujar_sistema_camaras():
 
         elif camara_seleccionada == "CAM_02":
             if barnaby.nodo_actual == 1:
-                dibujar_sprite_centrado(pantalla_camaras, sprite("barnaby_cam"), *con_pose(barnaby, 460, 330, 0.65), min(255, 220 + brillo_boost), vivo=True)
+                sp_b2 = sprite("barnaby_cam02") or sprite("barnaby_cam")
+                dibujar_sprite_centrado(pantalla_camaras, sp_b2, *con_pose(barnaby, 460, 330, 0.65), min(255, 220 + brillo_boost), vivo=True)
 
         elif camara_seleccionada == "CAM_03":
+            if ASSETS.get("cam_03"):
+                velo_c3 = pygame.Surface((720, 480), pygame.SRCALPHA)
+                velo_c3.fill((8, 10, 10, 115))
+                pantalla_camaras.blit(velo_c3, (100, 80))
             if penny.nodo_actual == 1:
+                sp_p3 = sprite("penny_cam03") or sprite("penny_cam")
+                dibujar_sprite_centrado(pantalla_camaras, sp_p3, 460, 340, 0.65, min(255, 225 + brillo_boost), vivo=True)
                 txt_audio = fuente_media.render("[AUDIO: PISADAS METÁLICAS EN CALDERA]", True, (240, 180, 80))
-                pantalla_camaras.blit(txt_audio, (170, 360))
+                caja_a3 = pygame.Rect(158, 415, txt_audio.get_width() + 24, txt_audio.get_height() + 10)
+                pantalla_camaras.fill((10, 12, 14), caja_a3)
+                pygame.draw.rect(pantalla_camaras, (240, 180, 80), caja_a3, 1)
+                pantalla_camaras.blit(txt_audio, (170, 420))
 
         elif camara_seleccionada == "CAM_04":
             if bunny.nodo_actual == 1:
-                dibujar_sprite_centrado(pantalla_camaras, sprite("bunny_cam"), *con_pose(bunny, 460, 335, 0.62), min(255, 215 + brillo_boost), vivo=True)
+                sp_u4 = sprite("bunny_cam04") or sprite("bunny_cam")
+                dibujar_sprite_centrado(pantalla_camaras, sp_u4, *con_pose(bunny, 460, 340, 0.65), min(255, 215 + brillo_boost), vivo=True)
 
         elif camara_seleccionada == "CAM_05":
             if bunny.nodo_actual == 2:
-                dibujar_sprite_centrado(pantalla_camaras, sprite("bunny_cam"), *con_pose(bunny, 460, 335, 0.68), min(255, 220 + brillo_boost), vivo=True)
+                sp_u5 = sprite("bunny_cam05") or sprite("bunny_cam")
+                dibujar_sprite_centrado(pantalla_camaras, sp_u5, *con_pose(bunny, 460, 335, 0.68), min(255, 220 + brillo_boost), vivo=True)
 
         elif camara_seleccionada == "CAM_06":
             if penny.nodo_actual == 2:
-                dibujar_sprite_centrado(pantalla_camaras, sprite("penny_cam"), *con_pose(penny, 460, 335, 0.68), min(255, 220 + brillo_boost), vivo=True)
+                sp_p6 = sprite("penny_cam06") or sprite("penny_cam")
+                dibujar_sprite_centrado(pantalla_camaras, sp_p6, *con_pose(penny, 460, 335, 0.68), min(255, 220 + brillo_boost), vivo=True)
 
         elif camara_seleccionada == "CAM_07":
             if barnaby.nodo_actual in [2, 3]:
                 pos_y = 310 if barnaby.nodo_actual == 2 else 345
                 escala_b = 0.50 if barnaby.nodo_actual == 2 else 0.75
                 brillo_b = 180 if barnaby.nodo_actual == 2 else 245
-                dibujar_sprite_centrado(pantalla_camaras, sprite("barnaby_cam"), 460, pos_y, escala_b, min(255, brillo_b + brillo_boost), vivo=True)
+                sp_b7 = sprite("barnaby_cam07") if barnaby.nodo_actual == 2 else (sprite("barnaby_cerca") or sprite("barnaby_cam07"))
+                dibujar_sprite_centrado(pantalla_camaras, sp_b7 or sprite("barnaby_cam"), 460, pos_y, escala_b, min(255, brillo_b + brillo_boost), vivo=True)
 
         elif camara_seleccionada == "CAM_08":
             if bunny.nodo_actual == 3:
-                dibujar_sprite_centrado(pantalla_camaras, sprite("bunny_cam"), *con_pose(bunny, 460, 335, 0.72), min(255, 235 + brillo_boost), vivo=True)
+                sp_u8 = sprite("bunny_cam08") or sprite("bunny_cam")
+                dibujar_sprite_centrado(pantalla_camaras, sp_u8, *con_pose(bunny, 460, 335, 0.72), min(255, 235 + brillo_boost), vivo=True)
 
             rect_bobina_box = pygame.Rect(565, 115, 240, 75)
             pygame.draw.rect(pantalla_camaras, (20, 24, 28), rect_bobina_box, border_radius=6)
