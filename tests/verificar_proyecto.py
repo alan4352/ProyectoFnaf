@@ -68,8 +68,10 @@ def verificar_assets():
         "silas_vent02.png", "silas_vent03.png", "silas_vent04.png",
         "unidad0_cam06.png", "unidad0_cam02.png", "unidad0_cam07.png",
         *(f"{sp}_{k:02d}.png" for sp in ("barnaby_oficina", "barnaby_cerca", "penny_puerta", "bunny_ventana", "silas_techo", "unidad0") for k in range(3)),
-        # Jumpscares animados
-        *(f"jumpscare_{a}_{k:02d}.jpg" for a in ("barnaby", "penny", "bunny", "silas", "unidad0") for k in range(3)),
+        # Jumpscares animados (Penny y Rusty Bunny cuentan con 6 fotogramas suaves con sprites transparentes)
+        *(f"jumpscare_{a}_{k:02d}.jpg" for a in ("barnaby", "silas", "unidad0") for k in range(3)),
+        *(f"jumpscare_{a}_{k:02d}.jpg" for a in ("penny", "bunny") for k in range(6)),
+        *(f"jumpscare_{a}_{k:02d}.png" for a in ("penny", "bunny") for k in range(6)),
         # Audio: gritos y llamadas
         *(f"grito_{a}.ogg" for a in ("barnaby", "penny", "bunny", "silas", "unidad0")),
         *(f"llamada_noche_{n}.ogg" for n in range(1, 6)),

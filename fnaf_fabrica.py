@@ -300,7 +300,7 @@ ANIMS = {}
 def cargar_cuadros(clave, escalar=None):
     cuadros = []
     while True:
-        img = cargar_imagen_opcional(f"{clave}_{len(cuadros):02d}.png", opaca=escalar is not None)
+        img = cargar_imagen_opcional(f"{clave}_{len(cuadros):02d}.png", opaca=False)
         if img is None:
             break
         cuadros.append(escalar(img) if escalar else img)
@@ -2182,8 +2182,14 @@ def dibujar_sistema_camaras():
 # 15. Jumpscares
 # -------------------------------------------------------------
 def dibujar_jumpscare(progreso):
-    color_fondo = (20, 22, 25) if (int(progreso * 30) % 2 == 0) else (4, 4, 6)
-    pantalla.fill(color_fondo)
+    # Fondo inmersivo: la oficina real del jugador para que el ataque ocurra dentro de la oficina
+    if ASSETS.get("oficina_base"):
+        pantalla.blit(superficie_oficina, (0, 0), (int(cam_x), 0, ANCHO_VENTANA, ALTO_VENTANA))
+        if int(progreso * 30) % 2 == 0:
+            pantalla.fill((22, 6, 6), special_flags=pygame.BLEND_RGB_ADD)
+    else:
+        color_fondo = (20, 22, 25) if (int(progreso * 30) % 2 == 0) else (4, 4, 6)
+        pantalla.fill(color_fondo)
 
     cx = ANCHO_VENTANA // 2
     cy = ALTO_VENTANA // 2
